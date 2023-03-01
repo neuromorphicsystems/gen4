@@ -36,6 +36,23 @@ local os_to_default_configuration = {
             '-framework QtQuick',
             '-framework QtQuickControls2'},
     },
+    macosx_m1 = {
+        moc = '/opt/homebrew/opt/qt@5/bin/moc',
+        moc_includedirs = {'/opt/homebrew/opt/qt@5/include/QtQml'},
+        includedirs = {
+            '/opt/homebrew/opt/qt@5/include',
+            '/opt/homebrew/opt/qt@5/include/QtQml'},
+        libdirs = {},
+        links = {},
+        buildoptions = {'-Wno-comma'},
+        linkoptions = {
+            '-F /opt/homebrew/opt/qt@5/lib',
+            '-framework QtCore',
+            '-framework QtGui',
+            '-framework QtQml',
+            '-framework QtQuick',
+            '-framework QtQuickControls2'},
+    },
     solaris = {
 
     },
@@ -53,20 +70,23 @@ local os_to_default_configuration = {
 }
 
 -- generate_configuration merges the given configuration map with the default one.
-function generate_configuration(os_to_configuration)
+function generate_configuration(os_to_configuration, target_os)
     if os_to_configuration == nil then
         os_to_configuration = {}
     end
+    if target_os == nil then
+        target_os = os.target()
+    end
     setmetatable(os_to_configuration, {__index = os_to_default_configuration})
-    local configuration = os_to_configuration[os.target()]
-    setmetatable(configuration, {__index = os_to_default_configuration[os.target()]})
+    local configuration = os_to_configuration[target_os]
+    setmetatable(configuration, {__index = os_to_default_configuration[target_os]})
     return configuration
 end
 
 -- moc calls Qt's moc on each file, and writes the result to target_directory.
 -- os_to_configuration can be used to override os-specific configurations.
 -- Only parameters different from the default need to be specified.
-function qt.moc(files, target_directory, os_to_configuration)
+function qt.moc(files, target_directory, os_to_configuration, target_os)
     local configuration = generate_configuration(os_to_configuration)
     os.mkdir(target_directory)
     local generated_files = {}

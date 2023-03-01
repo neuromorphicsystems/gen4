@@ -1,5 +1,4 @@
 #define NOMINMAX
-#include "date.hpp"
 #include <Python.h>
 #include <cstring>
 #include <sstream>
@@ -8,12 +7,21 @@
 #if defined(HAVE_SSIZE_T)
 #define _SSIZE_T_DEFINED
 #endif
-#include "third_party/roo/psee413.hpp"
+#include "../common/evk4.hpp"
+#include <ctime>
 #include <filesystem>
+#include <iomanip>
 #include <numpy/arrayobject.h>
 
 static std::string now() {
-    return date::format("%FT%TZ", date::floor<std::chrono::milliseconds>(std::chrono::system_clock::now()));
+    std::timespec timespec;
+    std::timespec_get(&timespec, TIME_UTC);
+    char time_string[std::size("yyyy-mm-ddThh:mm:ss.")];
+    std::strftime(std::data(time_string), std::size(time_string), "%FT%T.", std::gmtime(&timespec.tv_sec));
+    std::stringstream utc_timestamp_stream;
+    utc_timestamp_stream << time_string << std::setfill('0') << std::setw(6) << (timespec.tv_nsec / 1000) << 'Z';
+    const std::string utc_timestamp = utc_timestamp_stream.str();
+    return utc_timestamp;
 }
 
 /// python_path_to_string converts a path-like object to a string.
@@ -84,7 +92,7 @@ struct camera_data {
     std::unique_ptr<std::ofstream> jsonl_log;
     std::vector<slice> slices;
     std::size_t active_slice_index;
-    std::unique_ptr<sepia::psee413::base_camera> base_camera;
+    std::unique_ptr<sepia::evk4::base_camera> base_camera;
 };
 struct camera {
     PyObject_HEAD camera_data* data;
@@ -117,7 +125,7 @@ static PyObject* set_parameters(PyObject* self, PyObject* args) {
         if (!PyDict_Check(biases_dict)) {
             throw std::runtime_error("parameters.biases must be a dict");
         }
-        auto parameters = sepia::psee413::default_parameters;
+        auto parameters = sepia::evk4::default_parameters;
         parameters.biases.pr = read_bias(biases_dict, "pr");
         parameters.biases.fo_p = read_bias(biases_dict, "fo_p");
         parameters.biases.fo_n = read_bias(biases_dict, "fo_n");
@@ -354,7 +362,7 @@ static int camera_init(PyObject* self, PyObject* args, PyObject*) {
         }
         data->active_slice_index = 0;
         data->slices[data->active_slice_index].end_t = slice_duration;
-        data->base_camera = sepia::psee413::make_camera(
+        data->base_camera = sepia::evk4::make_camera(
             [slice_duration, slices_count, data](sepia::dvs_event event) {
                 if (event.t >= data->slices[data->active_slice_index].end_t) {
                     while (data->accessing_camera.test_and_set(std::memory_order_acquire)) {
@@ -371,11 +379,13 @@ static int camera_init(PyObject* self, PyObject* args, PyObject*) {
                 if (event.on) {
                     data->slices[data->active_slice_index].on_events.push_back(static_cast<float>(event.x));
                     data->slices[data->active_slice_index].on_events.push_back(static_cast<float>(event.y));
-                    data->slices[data->active_slice_index].on_events.push_back(static_cast<float>(event.t & 0xffffffffu));
+                    data->slices[data->active_slice_index].on_events.push_back(
+                        static_cast<float>(event.t & 0xffffffffu));
                 } else {
                     data->slices[data->active_slice_index].off_events.push_back(static_cast<float>(event.x));
                     data->slices[data->active_slice_index].off_events.push_back(static_cast<float>(event.y));
-                    data->slices[data->active_slice_index].off_events.push_back(static_cast<float>(event.t & 0xffffffffu));
+                    data->slices[data->active_slice_index].off_events.push_back(
+                        static_cast<float>(event.t & 0xffffffffu));
                 }
                 if (data->write_event) {
                     data->write_event->operator()({
@@ -387,7 +397,7 @@ static int camera_init(PyObject* self, PyObject* args, PyObject*) {
                 }
                 data->previous_t = event.t;
             },
-            [](sepia::psee413::trigger_event) {},
+            [](sepia::evk4::trigger_event) {},
             [=]() {},
             [=]() {
                 while (data->accessing_camera.test_and_set(std::memory_order_acquire)) {
@@ -415,12 +425,13 @@ static int camera_init(PyObject* self, PyObject* args, PyObject*) {
                     data->first_t = data->previous_t;
                     data->last_size_read_t = 0;
                     data->write_event = std::make_unique<sepia::write<sepia::type::dvs>>(
-                        sepia::filename_to_ofstream(data->file_name), sepia::psee413::width, sepia::psee413::height);
-                    const auto utc = std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(
-                                                        std::chrono::system_clock::now().time_since_epoch())
-                                                        .count());
+                        sepia::filename_to_ofstream(data->file_name), sepia::evk4::width, sepia::evk4::height);
+                    const auto monotonic_clock = std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(
+                                                                    std::chrono::system_clock::now().time_since_epoch())
+                                                                    .count());
                     std::stringstream message;
-                    message << "{\"timestamp\":" << now() << ",\"type\":\"clap\",\"utc\":" << utc << ",\"filename\":\""
+                    message << "{\"utc_timestamp\":" << now()
+                            << ",\"type\":\"clap\",\"monotonic_clock\":" << monotonic_clock << ",\"filename\":\""
                             << data->file_name << "\"}\n";
                     const std::string message_string = message.str();
                     data->jsonl_log->write(message_string.data(), message_string.size());
@@ -434,12 +445,12 @@ static int camera_init(PyObject* self, PyObject* args, PyObject*) {
                 data->exception = exception;
                 data->accessing_camera.clear(std::memory_order_release);
             },
-            sepia::psee413::default_parameters,
+            sepia::evk4::default_parameters,
             "",
             std::chrono::milliseconds(100),
             [=](std::size_t dropped_bytes) {
                 std::stringstream message;
-                message << "{\"timestamp\":" << now() << ",\"type\":\"drop\",\"bytes\":" << dropped_bytes << "}\n";
+                message << "{\"utc_timestamp\":" << now() << ",\"type\":\"drop\",\"bytes\":" << dropped_bytes << "}\n";
                 const std::string message_string = message.str();
                 data->jsonl_log->write(message_string.data(), message_string.size());
                 data->jsonl_log->flush();
@@ -452,17 +463,17 @@ static int camera_init(PyObject* self, PyObject* args, PyObject*) {
 }
 static PyTypeObject camera_type = {PyVarObject_HEAD_INIT(nullptr, 0)};
 
-static PyMethodDef psee413_3d_extension_methods[] = {{nullptr, nullptr, 0, nullptr}};
-static struct PyModuleDef psee413_3d_extension_definition = {
+static PyMethodDef evk4_3d_extension_methods[] = {{nullptr, nullptr, 0, nullptr}};
+static struct PyModuleDef evk4_3d_extension_definition = {
     PyModuleDef_HEAD_INIT,
-    "psee413_3d_extension",
-    "psee413_3d_extension reads events from a Prophesee Gen 4 dev kit 1.3 (Denebola)",
+    "evk4_3d_extension",
+    "evk4_3d_extension reads events from a Prophesee Gen 4 dev kit 1.3 (Denebola)",
     -1,
-    psee413_3d_extension_methods};
-PyMODINIT_FUNC PyInit_psee413_3d_extension() {
-    auto module = PyModule_Create(&psee413_3d_extension_definition);
+    evk4_3d_extension_methods};
+PyMODINIT_FUNC PyInit_evk4_3d_extension() {
+    auto module = PyModule_Create(&evk4_3d_extension_definition);
     import_array();
-    camera_type.tp_name = "psee413_3d_extension.Camera";
+    camera_type.tp_name = "evk4_3d_extension.Camera";
     camera_type.tp_basicsize = sizeof(camera);
     camera_type.tp_dealloc = camera_dealloc;
     camera_type.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
