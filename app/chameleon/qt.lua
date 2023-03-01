@@ -70,7 +70,7 @@ local os_to_default_configuration = {
 }
 
 -- generate_configuration merges the given configuration map with the default one.
-function generate_configuration(os_to_configuration, target_os)
+function generate_configuration(target_os, os_to_configuration)
     if os_to_configuration == nil then
         os_to_configuration = {}
     end
@@ -86,8 +86,8 @@ end
 -- moc calls Qt's moc on each file, and writes the result to target_directory.
 -- os_to_configuration can be used to override os-specific configurations.
 -- Only parameters different from the default need to be specified.
-function qt.moc(files, target_directory, os_to_configuration, target_os)
-    local configuration = generate_configuration(os_to_configuration)
+function qt.moc(files, target_directory, target_os, os_to_configuration)
+    local configuration = generate_configuration(target_os, os_to_configuration)
     os.mkdir(target_directory)
     local generated_files = {}
     local moc_includes = {}
@@ -120,32 +120,32 @@ end
 -- includedirs returns a list to be passed to premake's includedirs function.
 -- os_to_configuration can be used to override os-specific configurations.
 -- Only parameters different from the default need to be specified.
-function qt.includedirs(os_to_configuration)
-    local configuration = generate_configuration(os_to_configuration)
+function qt.includedirs(target_os, os_to_configuration)
+    local configuration = generate_configuration(target_os, os_to_configuration)
     return configuration.includedirs
 end
 
 -- libdirs returns a list to be passed to premake's libdirs function.
 -- os_to_configuration can be used to override os-specific configurations.
 -- Only parameters different from the default need to be specified.
-function qt.libdirs(os_to_configuration)
-    local configuration = generate_configuration(os_to_configuration)
+function qt.libdirs(target_os, os_to_configuration)
+    local configuration = generate_configuration(target_os, os_to_configuration)
     return configuration.libdirs
 end
 
 -- links returns a list to be passed to premake's links function.
 -- os_to_configuration can be used to override os-specific configurations.
 -- Only parameters different from the default need to be specified.
-function qt.links(os_to_configuration)
-    local configuration = generate_configuration(os_to_configuration)
+function qt.links(target_os, os_to_configuration)
+    local configuration = generate_configuration(target_os, os_to_configuration)
     return configuration.links
 end
 
 -- buildoptions returns a list to be passed to premake's buildoptions function.
 -- os_to_configuration can be used to override os-specific configurations.
 -- Only parameters different from the default need to be specified.
-function qt.buildoptions(os_to_configuration)
-    local configuration = generate_configuration(os_to_configuration)
+function qt.buildoptions(target_os, os_to_configuration)
+    local configuration = generate_configuration(target_os, os_to_configuration)
     return configuration.buildoptions
 end
 
@@ -153,8 +153,8 @@ end
 -- linkoptions returns a list to be passed to premake's linkoptions function.
 -- os_to_configuration can be used to override os-specific configurations.
 -- Only parameters different from the default need to be specified.
-function qt.linkoptions(os_to_configuration)
-    local configuration = generate_configuration(os_to_configuration)
+function qt.linkoptions(target_os, os_to_configuration)
+    local configuration = generate_configuration(target_os, os_to_configuration)
     return configuration.linkoptions
 end
 
