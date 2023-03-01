@@ -32,7 +32,7 @@ project "evk4_recorder"
     filter "system:macosx"
         buildoptions {"-std=c++17"}
         linkoptions {"-std=c++17"}
-        libdirs {"/usr/local/lib"}
+        libdirs {"/usr/local/lib", "/opt/homebrew/lib"}
         links {"usb-1.0"}
     filter "system:windows"
         architecture "x64"
@@ -54,7 +54,7 @@ project "lsevk4"
     filter "system:macosx"
         buildoptions {"-std=c++17"}
         linkoptions {"-std=c++17"}
-        libdirs {"/usr/local/lib"}
+        libdirs {"/usr/local/lib", "/opt/homebrew/lib"}
         links {"usb-1.0"}
     filter "system:windows"
         architecture "x64"
