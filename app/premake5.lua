@@ -10,6 +10,8 @@ workspace "recorder"
         defines {"DEBUG"}
         symbols "On"
 
+target_os = "macosx_m1"
+
 project "evk4_recorder"
     location "build"
     kind "ConsoleApp"
@@ -19,12 +21,13 @@ project "evk4_recorder"
     files(qt.moc({
         "chameleon/source/background_cleaner.hpp",
         "chameleon/source/dvs_display.hpp"},
-        "build/moc"))
-    includedirs(qt.includedirs())
-    libdirs(qt.libdirs())
-    links(qt.links())
-    buildoptions(qt.buildoptions())
-    linkoptions(qt.linkoptions())
+        "build/moc",
+        target_os))
+    includedirs(qt.includedirs(target_os))
+    libdirs(qt.libdirs(target_os))
+    links(qt.links(target_os))
+    buildoptions(qt.buildoptions(target_os))
+    linkoptions(qt.linkoptions(target_os))
     filter "system:linux"
         buildoptions {"-std=c++17"}
         linkoptions {"-std=c++17"}
