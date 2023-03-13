@@ -9,25 +9,12 @@
 #include <iomanip>
 #include <sstream>
 
-#define sepia_evk4_bias(name, offset, flags)                                                                           \
+#include <bitset>   // @DEV
+#include <iostream> // @DEV
+
+#define sepia_evk4_bias(address, name, flags)                                                                          \
     if (force || camera_parameters.biases.name != _previous_parameters.biases.name) {                                  \
-        if (!force) {                                                                                                  \
-            bulk_request({0x55, 0x00, 0x00, 0x00, 0x14, 0x10, 0x00, 0x00}, 100);                                       \
-        }                                                                                                              \
-        bulk_request(                                                                                                  \
-            {0x56,                                                                                                     \
-             0x00,                                                                                                     \
-             0x00,                                                                                                     \
-             0x00,                                                                                                     \
-             offset,                                                                                                   \
-             0x10,                                                                                                     \
-             0x00,                                                                                                     \
-             0x00,                                                                                                     \
-             static_cast<uint8_t>(bgen_idac_ctl(camera_parameters.biases.name)),                                       \
-             force ? static_cast<uint8_t>(((flags) >> 8) & 0xff) : static_cast<uint8_t>(0),                            \
-             static_cast<uint8_t>(((flags) >> 16) & 0xff),                                                             \
-             static_cast<uint8_t>(((force ? (flags) : ((flags) | bgen_single)) >> 24) & 0xff)},                        \
-            100);                                                                                                      \
+        write_register(address, (flags) | bgen_idac_ctl(camera_parameters.biases.name));                               \
     }
 
 namespace sepia {
@@ -68,15 +55,18 @@ namespace sepia {
         /// bias_currents lists the camera bias currents.
         struct bias_currents {
             uint8_t pr;
-            uint8_t fo_p;
-            uint8_t fo_n;
+            uint8_t fo;
             uint8_t hpf;
             uint8_t diff_on;
             uint8_t diff;
             uint8_t diff_off;
+            uint8_t inv;
             uint8_t refr;
             uint8_t reqpuy;
-            uint8_t blk;
+            uint8_t reqpux;
+            uint8_t sendreqpdy;
+            uint8_t unknown_1;
+            uint8_t unknown_2;
         };
 
         /// parameters lists the camera parameters.
@@ -86,7 +76,21 @@ namespace sepia {
 
         /// default_parameters provides camera parameters tuned for standard use.
         constexpr parameters default_parameters{
-            {0x69, 0x4a, 0x00, 0x00, 0x73, 0x50, 0x34, 0x44, 0x94, 0x78},
+            {
+                0x7c, // pr
+                0x53, // fo
+                0x00, // hpf
+                0x66, // diff_on;
+                0x4d, // diff;
+                0x49, // diff_off;
+                0x5b, // inv;
+                0x14, // refr;
+                0x8c, // reqpuy;
+                0x7c, // reqpux;
+                0x94, // sendreqpdy;
+                0x74, // unknown_1;
+                0x51, // unknown_2;
+            },
         };
 
         /// base_camera is a common base type for EVK4 cameras.
@@ -110,189 +114,183 @@ namespace sepia {
             return mask_and_shift(1, shift, 1u);
         }
 
-        constexpr uint16_t roi_ctrl_address = 0x0004;
-        constexpr uint16_t lifo_ctrl_address = 0x000C;
-        constexpr uint16_t lifo_status_address = 0x0010;
-        constexpr uint16_t reserved_0014_address = 0x0014;
-        constexpr uint16_t spare0_address = 0x0018;
-        constexpr uint16_t refractory_ctrl_address = 0x0020;
-        constexpr uint16_t roi_win_ctrl_address = 0x0034;
-        constexpr uint16_t roi_win_start_addr_address = 0x0038;
-        constexpr uint16_t roi_win_end_addr_address = 0x003C;
-        constexpr uint16_t dig_pad2_ctrl_address = 0x0044;
-        constexpr uint16_t adc_control_address = 0x004C;
-        constexpr uint16_t adc_status_address = 0x0050;
-        constexpr uint16_t adc_misc_ctrl_address = 0x0054;
-        constexpr uint16_t temp_ctrl_address = 0x005C;
-        constexpr uint16_t iph_mirr_ctrl_address = 0x0074;
-        constexpr uint16_t gcd_ctrl1_address = 0x0078;
-        constexpr uint16_t gcd_shadow_ctrl_address = 0x0090;
-        constexpr uint16_t gcd_shadow_status_address = 0x0094;
-        constexpr uint16_t gcd_shadow_counter_address = 0x0098;
-        constexpr uint16_t stop_sequence_control_address = 0x00C8;
-        constexpr uint16_t bias_fo_address = 0x1004;
-        constexpr uint16_t bias_hpf_address = 0x100C;
-        constexpr uint16_t bias_diff_on_address = 0x1010;
-        constexpr uint16_t bias_diff_address = 0x1014;
-        constexpr uint16_t bias_diff_off_address = 0x1018;
-        constexpr uint16_t bias_refr_address = 0x1020;
-        constexpr uint16_t bgen_ctrl_address = 0x1100;
-        constexpr uint16_t td_roi_x_begin = 0x2000;
-        constexpr uint16_t td_roi_x_end = 0x20A0;
-        constexpr uint16_t td_roi_y_begin = 0x4000;
-        constexpr uint16_t td_roi_y_end = 0x405C;
-        constexpr uint16_t erc_reserved_6000_address = 0x6000;
-        constexpr uint16_t in_drop_rate_control_address = 0x6004;
-        constexpr uint16_t reference_period_address = 0x6008;
-        constexpr uint16_t td_target_event_rate_address = 0x600C;
-        constexpr uint16_t erc_enable_address = 0x6028;
-        constexpr uint16_t erc_reserved_602C_address = 0x602C;
-        constexpr uint16_t t_dropping_control_address = 0x6050;
-        constexpr uint16_t h_dropping_control_address = 0x6060;
-        constexpr uint16_t v_dropping_control_address = 0x6070;
-        //constexpr uint16_t h_drop_lut_00_address = 0x6080;
-        //constexpr uint16_t h_drop_lut_01_address = 0x6084;
-        //constexpr uint16_t h_drop_lut_02_address = 0x6088;
-        //constexpr uint16_t h_drop_lut_03_address = 0x608C;
-        //constexpr uint16_t h_drop_lut_04_address = 0x6090;
-        //constexpr uint16_t h_drop_lut_05_address = 0x6094;
-        //constexpr uint16_t h_drop_lut_06_address = 0x6098;
-        //constexpr uint16_t h_drop_lut_07_address = 0x609C;
-        //constexpr uint16_t v_drop_lut_00_address = 0x60C0;
-        //constexpr uint16_t v_drop_lut_01_address = 0x60C4;
-        //constexpr uint16_t v_drop_lut_02_address = 0x60C8;
-        //constexpr uint16_t v_drop_lut_03_address = 0x60CC;
-        //constexpr uint16_t v_drop_lut_04_address = 0x60D0;
-        //constexpr uint16_t v_drop_lut_05_address = 0x60D4;
-        //constexpr uint16_t v_drop_lut_06_address = 0x60D8;
-        //constexpr uint16_t v_drop_lut_07_address = 0x60DC;
-        constexpr uint16_t t_drop_lut_begin = 0x6400;
-        constexpr uint16_t t_drop_lut_end = 0x6800;
-        constexpr uint16_t erc_reserved_6800_6B98_begin = 0x6800;
-        constexpr uint16_t erc_reserved_6800_6B98_end = 0x6B98;
-        constexpr uint16_t edf_pipeline_control_address = 0x7000;
-        constexpr uint16_t edf_reserved_7004_address = 0x7004;
-        constexpr uint16_t readout_ctrl_address = 0x9000;
-        constexpr uint16_t ro_fsm_ctrl_address = 0x9004;
-        constexpr uint16_t time_base_ctrl_address = 0x9008;
-        constexpr uint16_t dig_ctrl_address = 0x900C;
-        constexpr uint16_t dig_start_pos_address = 0x9010;
-        constexpr uint16_t dig_end_pos_address = 0x9014;
-        constexpr uint16_t ro_ctrl_address = 0x9028;
-        constexpr uint16_t area_x0_addr_address = 0x902C;
-        constexpr uint16_t area_x1_addr_address = 0x9030;
-        constexpr uint16_t area_x2_addr_address = 0x9034;
-        constexpr uint16_t area_x3_addr_address = 0x9038;
-        constexpr uint16_t area_x4_addr_address = 0x903C;
-        constexpr uint16_t area_y0_addr_address = 0x9040;
-        constexpr uint16_t area_y1_addr_address = 0x9044;
-        constexpr uint16_t area_y2_addr_address = 0x9048;
-        constexpr uint16_t area_y3_addr_address = 0x904C;
-        constexpr uint16_t area_y4_addr_address = 0x9050;
-        constexpr uint16_t counter_ctrl_address = 0x9054;
-        constexpr uint16_t counter_timer_threshold_address = 0x9058;
-        constexpr uint16_t digital_mask_pixel_00_address = 0x9100;
-        constexpr uint16_t digital_mask_pixel_01_address = 0x9104;
-        constexpr uint16_t digital_mask_pixel_02_address = 0x9108;
-        constexpr uint16_t digital_mask_pixel_03_address = 0x910C;
-        constexpr uint16_t digital_mask_pixel_04_address = 0x9110;
-        constexpr uint16_t digital_mask_pixel_05_address = 0x9114;
-        constexpr uint16_t digital_mask_pixel_06_address = 0x9118;
-        constexpr uint16_t digital_mask_pixel_07_address = 0x911C;
-        constexpr uint16_t digital_mask_pixel_08_address = 0x9120;
-        constexpr uint16_t digital_mask_pixel_09_address = 0x9124;
-        constexpr uint16_t digital_mask_pixel_10_address = 0x9128;
-        constexpr uint16_t digital_mask_pixel_11_address = 0x912C;
-        constexpr uint16_t digital_mask_pixel_12_address = 0x9130;
-        constexpr uint16_t digital_mask_pixel_13_address = 0x9134;
-        constexpr uint16_t digital_mask_pixel_14_address = 0x9138;
-        constexpr uint16_t digital_mask_pixel_15_address = 0x913C;
-        constexpr uint16_t digital_mask_pixel_16_address = 0x9140;
-        constexpr uint16_t digital_mask_pixel_17_address = 0x9144;
-        constexpr uint16_t digital_mask_pixel_18_address = 0x9148;
-        constexpr uint16_t digital_mask_pixel_19_address = 0x914C;
-        constexpr uint16_t digital_mask_pixel_20_address = 0x9150;
-        constexpr uint16_t digital_mask_pixel_21_address = 0x9154;
-        constexpr uint16_t digital_mask_pixel_22_address = 0x9158;
-        constexpr uint16_t digital_mask_pixel_23_address = 0x915C;
-        constexpr uint16_t digital_mask_pixel_24_address = 0x9160;
-        constexpr uint16_t digital_mask_pixel_25_address = 0x9164;
-        constexpr uint16_t digital_mask_pixel_26_address = 0x9168;
-        constexpr uint16_t digital_mask_pixel_27_address = 0x916C;
-        constexpr uint16_t digital_mask_pixel_28_address = 0x9170;
-        constexpr uint16_t digital_mask_pixel_29_address = 0x9174;
-        constexpr uint16_t digital_mask_pixel_30_address = 0x9178;
-        constexpr uint16_t digital_mask_pixel_31_address = 0x917C;
-        constexpr uint16_t digital_mask_pixel_32_address = 0x9180;
-        constexpr uint16_t digital_mask_pixel_33_address = 0x9184;
-        constexpr uint16_t digital_mask_pixel_34_address = 0x9188;
-        constexpr uint16_t digital_mask_pixel_35_address = 0x918C;
-        constexpr uint16_t digital_mask_pixel_36_address = 0x9190;
-        constexpr uint16_t digital_mask_pixel_37_address = 0x9194;
-        constexpr uint16_t digital_mask_pixel_38_address = 0x9198;
-        constexpr uint16_t digital_mask_pixel_39_address = 0x919C;
-        constexpr uint16_t digital_mask_pixel_40_address = 0x91A0;
-        constexpr uint16_t digital_mask_pixel_41_address = 0x91A4;
-        constexpr uint16_t digital_mask_pixel_42_address = 0x91A8;
-        constexpr uint16_t digital_mask_pixel_43_address = 0x91AC;
-        constexpr uint16_t digital_mask_pixel_44_address = 0x91B0;
-        constexpr uint16_t digital_mask_pixel_45_address = 0x91B4;
-        constexpr uint16_t digital_mask_pixel_46_address = 0x91B8;
-        constexpr uint16_t digital_mask_pixel_47_address = 0x91BC;
-        constexpr uint16_t digital_mask_pixel_48_address = 0x91C0;
-        constexpr uint16_t digital_mask_pixel_49_address = 0x91C4;
-        constexpr uint16_t digital_mask_pixel_50_address = 0x91C8;
-        constexpr uint16_t digital_mask_pixel_51_address = 0x91CC;
-        constexpr uint16_t digital_mask_pixel_52_address = 0x91D0;
-        constexpr uint16_t digital_mask_pixel_53_address = 0x91D4;
-        constexpr uint16_t digital_mask_pixel_54_address = 0x91D8;
-        constexpr uint16_t digital_mask_pixel_55_address = 0x91DC;
-        constexpr uint16_t digital_mask_pixel_56_address = 0x91E0;
-        constexpr uint16_t digital_mask_pixel_57_address = 0x91E4;
-        constexpr uint16_t digital_mask_pixel_58_address = 0x91E8;
-        constexpr uint16_t digital_mask_pixel_59_address = 0x91EC;
-        constexpr uint16_t digital_mask_pixel_60_address = 0x91F0;
-        constexpr uint16_t digital_mask_pixel_61_address = 0x91F4;
-        constexpr uint16_t digital_mask_pixel_62_address = 0x91F8;
-        constexpr uint16_t digital_mask_pixel_63_address = 0x91FC;
-        constexpr uint16_t area_cnt00_address = 0x9200;
-        constexpr uint16_t area_cnt01_address = 0x9204;
-        constexpr uint16_t area_cnt02_address = 0x9208;
-        constexpr uint16_t area_cnt03_address = 0x920C;
-        constexpr uint16_t area_cnt04_address = 0x9210;
-        constexpr uint16_t area_cnt05_address = 0x9214;
-        constexpr uint16_t area_cnt06_address = 0x9218;
-        constexpr uint16_t area_cnt07_address = 0x921C;
-        constexpr uint16_t area_cnt08_address = 0x9220;
-        constexpr uint16_t area_cnt09_address = 0x9224;
-        constexpr uint16_t area_cnt10_address = 0x9228;
-        constexpr uint16_t area_cnt11_address = 0x922C;
-        constexpr uint16_t area_cnt12_address = 0x9230;
-        constexpr uint16_t area_cnt13_address = 0x9234;
-        constexpr uint16_t area_cnt14_address = 0x9238;
-        constexpr uint16_t area_cnt15_address = 0x923C;
-        constexpr uint16_t evt_vector_cnt_val_address = 0x9244;
-        constexpr uint16_t mipi_control_address = 0xB000;
-        constexpr uint16_t mipi_packet_size_address = 0xB020;
-        constexpr uint16_t mipi_packet_timeout_address = 0xB024;
-        constexpr uint16_t mipi_frame_period_address = 0xB028;
-        constexpr uint16_t mipi_frame_blanking_address = 0xB030;
-        constexpr uint16_t afk_pipeline_control_address = 0xC000;
-        constexpr uint16_t reserved_C004_address = 0xC004;
-        constexpr uint16_t filter_period_address = 0xC008;
-        constexpr uint16_t invalidation_address = 0xC0C0;
-        constexpr uint16_t afk_initialization_address = 0xC0C4;
-        constexpr uint16_t stc_pipeline_control_address = 0xD000;
-        constexpr uint16_t stc_param_address = 0xD004;
-        constexpr uint16_t trail_param_address = 0xD008;
-        constexpr uint16_t timestamping_address = 0xD00C;
-        constexpr uint16_t reserved_D0C0_address = 0xD0C0;
-        constexpr uint16_t stc_initialization_address = 0xD0C4;
-        constexpr uint16_t slvs_control_address = 0xE000;
-        constexpr uint16_t slvs_packet_size_address = 0xE020;
-        constexpr uint16_t slvs_packet_timeout_address = 0xE024;
-        constexpr uint16_t slvs_frame_blanking_address = 0xE030;
-        constexpr uint16_t slvs_phy_logic_ctrl_00_address = 0xE150;
+        constexpr uint32_t reset_address = 0x400004u;
+
+        constexpr uint32_t roi_ctrl_address = 0x0004u;
+        constexpr uint32_t lifo_ctrl_address = 0x000Cu;
+        constexpr uint32_t lifo_status_address = 0x0010u;
+        constexpr uint32_t reserved_0014_address = 0x0014u;
+        constexpr uint32_t spare0_address = 0x0018u;
+        constexpr uint32_t refractory_ctrl_address = 0x0020u;
+        constexpr uint32_t roi_win_ctrl_address = 0x0034u;
+        constexpr uint32_t roi_win_start_addr_address = 0x0038u;
+        constexpr uint32_t roi_win_end_addr_address = 0x003Cu;
+        constexpr uint32_t dig_pad2_ctrl_address = 0x0044u;
+        constexpr uint32_t adc_control_address = 0x004Cu;
+        constexpr uint32_t adc_status_address = 0x0050u;
+        constexpr uint32_t adc_misc_ctrl_address = 0x0054u;
+        constexpr uint32_t temp_ctrl_address = 0x005Cu;
+        constexpr uint32_t iph_mirr_ctrl_address = 0x0074u;
+        constexpr uint32_t gcd_ctrl1_address = 0x0078u;
+        constexpr uint32_t gcd_shadow_ctrl_address = 0x0090u;
+        constexpr uint32_t gcd_shadow_status_address = 0x0094u;
+        constexpr uint32_t gcd_shadow_counter_address = 0x0098u;
+        constexpr uint32_t stop_sequence_control_address = 0x00C8u;
+        constexpr uint32_t bias_pr_address = 0x1000u;
+        constexpr uint32_t bias_fo_address = 0x1004u;
+        // constexpr uint32_t bias_fo_n_address = 0x1008u;
+        constexpr uint32_t bias_hpf_address = 0x100Cu;
+        constexpr uint32_t bias_diff_on_address = 0x1010u;
+        constexpr uint32_t bias_diff_address = 0x1014u;
+        constexpr uint32_t bias_diff_off_address = 0x1018u;
+        constexpr uint32_t bias_inv_address = 0x101Cu;
+        constexpr uint32_t bias_refr_address = 0x1020u;
+        constexpr uint32_t bias_reqpuy_address = 0x1040u;     // maybe reqpuy
+        constexpr uint32_t bias_reqpux_address = 0x1044u;     // maybe reqpux
+        constexpr uint32_t bias_sendreqpdy_address = 0x1048u; // maybe sendreqpdy
+        constexpr uint32_t bias_unknown_1_address = 0x104Cu;
+        constexpr uint32_t bias_unknown_2_address = 0x1050u;
+        constexpr uint32_t bgen_ctrl_address = 0x1100u;
+        constexpr uint32_t td_roi_x_begin = 0x2000u;
+        constexpr uint32_t td_roi_x_end = 0x20A0u;
+        constexpr uint32_t td_roi_y_begin = 0x4000u;
+        constexpr uint32_t td_roi_y_end = 0x405Cu;
+        constexpr uint32_t erc_reserved_6000_address = 0x6000u;
+        constexpr uint32_t in_drop_rate_control_address = 0x6004u;
+        constexpr uint32_t reference_period_address = 0x6008u;
+        constexpr uint32_t td_target_event_rate_address = 0x600Cu;
+        constexpr uint32_t erc_enable_address = 0x6028u;
+        constexpr uint32_t erc_reserved_602C_address = 0x602Cu;
+        constexpr uint32_t t_dropping_control_address = 0x6050u;
+        constexpr uint32_t h_dropping_control_address = 0x6060u;
+        constexpr uint32_t v_dropping_control_address = 0x6070u;
+        constexpr uint32_t t_drop_lut_begin = 0x6400u;
+        constexpr uint32_t t_drop_lut_end = 0x6800u;
+        constexpr uint32_t erc_reserved_6800_6B98_begin = 0x6800u;
+        constexpr uint32_t erc_reserved_6800_6B98_end = 0x6B98u;
+        constexpr uint32_t edf_pipeline_control_address = 0x7000u;
+        constexpr uint32_t edf_reserved_7004_address = 0x7004u;
+        constexpr uint32_t readout_ctrl_address = 0x9000u;
+        constexpr uint32_t ro_fsm_ctrl_address = 0x9004u;
+        constexpr uint32_t time_base_ctrl_address = 0x9008u;
+        constexpr uint32_t dig_ctrl_address = 0x900Cu;
+        constexpr uint32_t dig_start_pos_address = 0x9010u;
+        constexpr uint32_t dig_end_pos_address = 0x9014u;
+        constexpr uint32_t ro_ctrl_address = 0x9028u;
+        constexpr uint32_t area_x0_addr_address = 0x902Cu;
+        constexpr uint32_t area_x1_addr_address = 0x9030u;
+        constexpr uint32_t area_x2_addr_address = 0x9034u;
+        constexpr uint32_t area_x3_addr_address = 0x9038u;
+        constexpr uint32_t area_x4_addr_address = 0x903Cu;
+        constexpr uint32_t area_y0_addr_address = 0x9040u;
+        constexpr uint32_t area_y1_addr_address = 0x9044u;
+        constexpr uint32_t area_y2_addr_address = 0x9048u;
+        constexpr uint32_t area_y3_addr_address = 0x904Cu;
+        constexpr uint32_t area_y4_addr_address = 0x9050u;
+        constexpr uint32_t counter_ctrl_address = 0x9054u;
+        constexpr uint32_t counter_timer_threshold_address = 0x9058u;
+        constexpr uint32_t digital_mask_pixel_00_address = 0x9100u;
+        constexpr uint32_t digital_mask_pixel_01_address = 0x9104u;
+        constexpr uint32_t digital_mask_pixel_02_address = 0x9108u;
+        constexpr uint32_t digital_mask_pixel_03_address = 0x910Cu;
+        constexpr uint32_t digital_mask_pixel_04_address = 0x9110u;
+        constexpr uint32_t digital_mask_pixel_05_address = 0x9114u;
+        constexpr uint32_t digital_mask_pixel_06_address = 0x9118u;
+        constexpr uint32_t digital_mask_pixel_07_address = 0x911Cu;
+        constexpr uint32_t digital_mask_pixel_08_address = 0x9120u;
+        constexpr uint32_t digital_mask_pixel_09_address = 0x9124u;
+        constexpr uint32_t digital_mask_pixel_10_address = 0x9128u;
+        constexpr uint32_t digital_mask_pixel_11_address = 0x912Cu;
+        constexpr uint32_t digital_mask_pixel_12_address = 0x9130u;
+        constexpr uint32_t digital_mask_pixel_13_address = 0x9134u;
+        constexpr uint32_t digital_mask_pixel_14_address = 0x9138u;
+        constexpr uint32_t digital_mask_pixel_15_address = 0x913Cu;
+        constexpr uint32_t digital_mask_pixel_16_address = 0x9140u;
+        constexpr uint32_t digital_mask_pixel_17_address = 0x9144u;
+        constexpr uint32_t digital_mask_pixel_18_address = 0x9148u;
+        constexpr uint32_t digital_mask_pixel_19_address = 0x914Cu;
+        constexpr uint32_t digital_mask_pixel_20_address = 0x9150u;
+        constexpr uint32_t digital_mask_pixel_21_address = 0x9154u;
+        constexpr uint32_t digital_mask_pixel_22_address = 0x9158u;
+        constexpr uint32_t digital_mask_pixel_23_address = 0x915Cu;
+        constexpr uint32_t digital_mask_pixel_24_address = 0x9160u;
+        constexpr uint32_t digital_mask_pixel_25_address = 0x9164u;
+        constexpr uint32_t digital_mask_pixel_26_address = 0x9168u;
+        constexpr uint32_t digital_mask_pixel_27_address = 0x916Cu;
+        constexpr uint32_t digital_mask_pixel_28_address = 0x9170u;
+        constexpr uint32_t digital_mask_pixel_29_address = 0x9174u;
+        constexpr uint32_t digital_mask_pixel_30_address = 0x9178u;
+        constexpr uint32_t digital_mask_pixel_31_address = 0x917Cu;
+        constexpr uint32_t digital_mask_pixel_32_address = 0x9180u;
+        constexpr uint32_t digital_mask_pixel_33_address = 0x9184u;
+        constexpr uint32_t digital_mask_pixel_34_address = 0x9188u;
+        constexpr uint32_t digital_mask_pixel_35_address = 0x918Cu;
+        constexpr uint32_t digital_mask_pixel_36_address = 0x9190u;
+        constexpr uint32_t digital_mask_pixel_37_address = 0x9194u;
+        constexpr uint32_t digital_mask_pixel_38_address = 0x9198u;
+        constexpr uint32_t digital_mask_pixel_39_address = 0x919Cu;
+        constexpr uint32_t digital_mask_pixel_40_address = 0x91A0u;
+        constexpr uint32_t digital_mask_pixel_41_address = 0x91A4u;
+        constexpr uint32_t digital_mask_pixel_42_address = 0x91A8u;
+        constexpr uint32_t digital_mask_pixel_43_address = 0x91ACu;
+        constexpr uint32_t digital_mask_pixel_44_address = 0x91B0u;
+        constexpr uint32_t digital_mask_pixel_45_address = 0x91B4u;
+        constexpr uint32_t digital_mask_pixel_46_address = 0x91B8u;
+        constexpr uint32_t digital_mask_pixel_47_address = 0x91BCu;
+        constexpr uint32_t digital_mask_pixel_48_address = 0x91C0u;
+        constexpr uint32_t digital_mask_pixel_49_address = 0x91C4u;
+        constexpr uint32_t digital_mask_pixel_50_address = 0x91C8u;
+        constexpr uint32_t digital_mask_pixel_51_address = 0x91CCu;
+        constexpr uint32_t digital_mask_pixel_52_address = 0x91D0u;
+        constexpr uint32_t digital_mask_pixel_53_address = 0x91D4u;
+        constexpr uint32_t digital_mask_pixel_54_address = 0x91D8u;
+        constexpr uint32_t digital_mask_pixel_55_address = 0x91DCu;
+        constexpr uint32_t digital_mask_pixel_56_address = 0x91E0u;
+        constexpr uint32_t digital_mask_pixel_57_address = 0x91E4u;
+        constexpr uint32_t digital_mask_pixel_58_address = 0x91E8u;
+        constexpr uint32_t digital_mask_pixel_59_address = 0x91ECu;
+        constexpr uint32_t digital_mask_pixel_60_address = 0x91F0u;
+        constexpr uint32_t digital_mask_pixel_61_address = 0x91F4u;
+        constexpr uint32_t digital_mask_pixel_62_address = 0x91F8u;
+        constexpr uint32_t digital_mask_pixel_63_address = 0x91FCu;
+        constexpr uint32_t area_cnt00_address = 0x9200u;
+        constexpr uint32_t area_cnt01_address = 0x9204u;
+        constexpr uint32_t area_cnt02_address = 0x9208u;
+        constexpr uint32_t area_cnt03_address = 0x920Cu;
+        constexpr uint32_t area_cnt04_address = 0x9210u;
+        constexpr uint32_t area_cnt05_address = 0x9214u;
+        constexpr uint32_t area_cnt06_address = 0x9218u;
+        constexpr uint32_t area_cnt07_address = 0x921Cu;
+        constexpr uint32_t area_cnt08_address = 0x9220u;
+        constexpr uint32_t area_cnt09_address = 0x9224u;
+        constexpr uint32_t area_cnt10_address = 0x9228u;
+        constexpr uint32_t area_cnt11_address = 0x922Cu;
+        constexpr uint32_t area_cnt12_address = 0x9230u;
+        constexpr uint32_t area_cnt13_address = 0x9234u;
+        constexpr uint32_t area_cnt14_address = 0x9238u;
+        constexpr uint32_t area_cnt15_address = 0x923Cu;
+        constexpr uint32_t evt_vector_cnt_val_address = 0x9244u;
+        constexpr uint32_t mipi_control_address = 0xB000u;
+        constexpr uint32_t mipi_packet_size_address = 0xB020u;
+        constexpr uint32_t mipi_packet_timeout_address = 0xB024u;
+        constexpr uint32_t mipi_frame_period_address = 0xB028u;
+        constexpr uint32_t mipi_frame_blanking_address = 0xB030u;
+        constexpr uint32_t afk_pipeline_control_address = 0xC000u;
+        constexpr uint32_t reserved_C004_address = 0xC004u;
+        constexpr uint32_t filter_period_address = 0xC008u;
+        constexpr uint32_t invalidation_address = 0xC0C0u;
+        constexpr uint32_t afk_initialization_address = 0xC0C4u;
+        constexpr uint32_t stc_pipeline_control_address = 0xD000u;
+        constexpr uint32_t stc_param_address = 0xD004u;
+        constexpr uint32_t trail_param_address = 0xD008u;
+        constexpr uint32_t timestamping_address = 0xD00Cu;
+        constexpr uint32_t reserved_D0C0_address = 0xD0C0u;
+        constexpr uint32_t stc_initialization_address = 0xD0C4u;
+        constexpr uint32_t slvs_control_address = 0xE000u;
+        constexpr uint32_t slvs_packet_size_address = 0xE020u;
+        constexpr uint32_t slvs_packet_timeout_address = 0xE024u;
+        constexpr uint32_t slvs_frame_blanking_address = 0xE030u;
+        constexpr uint32_t slvs_phy_logic_ctrl_00_address = 0xE150u;
 
         // bias generation
         auto bgen_idac_ctl = std::bind(mask_and_shift, 0b11111111u, 0, std::placeholders::_1);
@@ -603,7 +601,13 @@ namespace sepia {
                      'h',  0x00, 'e', 0x00, 's', 0x00, 'e', 0x00, 'e', 0x00},
                     1000);
                 _interface.checked_control_transfer(
-                    "control0", 0x80, 0x06, 0x0300, 0x0000, std::vector<uint8_t>({0x04, 0x03, 0x09, 0x04}), 1000); // potentially redundant
+                    "control0",
+                    0x80,
+                    0x06,
+                    0x0300,
+                    0x0000,
+                    std::vector<uint8_t>({0x04, 0x03, 0x09, 0x04}),
+                    1000); // potentially redundant
                 _interface.checked_control_transfer(
                     "control2",
                     0x80,
@@ -612,198 +616,225 @@ namespace sepia {
                     0x0409,
                     {0x0a, 0x03, 'E', 0x00, 'V', 0x00, 'K', 0x00, '4', 0x00},
                     1000);
-                bulk_request({0x79, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000);
-                bulk_request({0x7a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000);
-                bulk_request({0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000);
-                bulk_request({0x03, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000);
-                set_register(reserved_0014_address, 0x00000001u, 0x00, 0x00);
-                bulk_request({0x72, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000);
-                bulk_request({0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000);
-                bulk_request({0x01, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000);
-                bulk_request({0x03, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000);
-                set_register(reserved_0014_address, 0x00000001u, 0x00, 0x00);
-                set_register(roi_ctrl_address, 0xf0005042u, 0x40, 0x00);
-                set_register(0x002c, 0x0022c324u, 0x40, 0x00); // unknown address
-                set_register(ro_ctrl_address, 0x00000002u, 0x40, 0x00);
-                set_register(time_base_ctrl_address, 0x00000001u, 0x00, 0x00);
-                set_register(time_base_ctrl_address, 0x00000644u, 0x40, 0x00);
-                set_register(mipi_control_address, 0x000002f8u, 0x40, 0x00);
-                set_register(0x0070, 0x00400008u, 0x40, 0x00); // unknown address
-                set_register(0x006c, 0x0ee47114u, 0x40, 0x00); // unknown address
-                set_register(0xa00c, 0x00020400u, 0x40, 0x00); // unknown address
-                set_register(0xa010, 0x00008068u, 0x40, 0x00); // unknown address
-                set_register(0x1104, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0xa020, 0x00000050u, 0x40, 0x00); // unknown address
-                set_register(0xa004, 0x000b0500u, 0x40, 0x00); // unknown address
-                set_register(0xa008, 0x00002404u, 0x40, 0x00); // unknown address
-                set_register(0xa000, 0x000b0500u, 0x40, 0x00); // unknown address
-                set_register(0xb044, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0xb004, 0x0000000au, 0x40, 0x00); // unknown address
-                set_register(0xb040, 0x0000000eu, 0x40, 0x00); // unknown address
-                set_register(0xb0c8, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0xb040, 0x00000006u, 0x40, 0x00); // unknown address
-                set_register(0xb040, 0x00000004u, 0x40, 0x00); // unknown address
-                set_register(0x0000, 0x4f006442u, 0x40, 0x00); // unknown address
-                set_register(0x0000, 0x0f006442u, 0x40, 0x00); // unknown address
-                set_register(0x00b8, 0x00000401u, 0x40, 0x00); // unknown address
-                set_register(0x00b8, 0x00000400u, 0x40, 0x00); // unknown address
-                set_register(0xb07c, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0x001c, 0x00000001u, 0x40, 0x00); // unknown address
-                set_register(roi_ctrl_address, 0x00000001u, 0x40, 0x40);
+                bulk_request({0x79, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000); // read release version
+                bulk_request({0x7a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000); // read build date
+                bulk_request({0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000); // ?
+                bulk_request(
+                    {0x03, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+                    1000);                            // psee,ccam5_imx636 psee,ccam5_gen42
+                read_register(reserved_0014_address); // ?
+                bulk_request({0x72, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000); // serial request
+                bulk_request({0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000); // ?
+                bulk_request(
+                    {0x01, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+                    1000); // CCam5 Imx636 Event-Based Camera
+                bulk_request(
+                    {0x03, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+                    1000);                            // psee,ccam5_imx636 psee,ccam5_gen42
+                read_register(reserved_0014_address); // ?
+
+                // issd_evk3_imx636_stop in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
+                write_register(roi_ctrl_address, 0xf0005042u);
+                write_register(0x002c, 0x0022c324u); // unknown address
+                write_register(ro_ctrl_address, 0x00000002u);
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                read_register(time_base_ctrl_address);
+                write_register(time_base_ctrl_address, 0x00000644u);
+                write_register(mipi_control_address, 0x000002f8u);
+                std::this_thread::sleep_for(std::chrono::microseconds(300));
+                // }
+
+                // issd_evk3_imx636_destroy in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
+                write_register(0x0070, 0x00400008u); // unknown address
+                write_register(0x006c, 0x0ee47114u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
+                write_register(0xa00c, 0x00020400u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
+                write_register(0xa010, 0x00008068u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0x1104, 0x00000000u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa020, 0x00000050u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa004, 0x000b0500u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa008, 0x00002404u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa000, 0x000b0500u); // unknown address
+                write_register(0xb044, 0x00000000u); // unknown address
+                write_register(0xb004, 0x0000000au); // unknown address
+                write_register(0xb040, 0x0000000eu); // unknown address
+                write_register(0xb0c8, 0x00000000u); // unknown address
+                write_register(0xb040, 0x00000006u); // unknown address
+                write_register(0xb040, 0x00000004u); // unknown address
+                write_register(0x0000, 0x4f006442u); // unknown address
+                write_register(0x0000, 0x0f006442u); // unknown address
+                write_register(0x00b8, 0x00000401u); // unknown address
+                write_register(0x00b8, 0x00000400u); // unknown address
+                write_register(0xb07c, 0x00000000u); // unknown address
+                // }
+
+                // issd_evk3_imx636_init in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
+                write_register(0x001c, 0x00000001u); // unknown address
+                write_register(reset_address, 0x00000001u);
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                set_register(roi_ctrl_address, 0x00000000u, 0x40, 0x40);
+                write_register(reset_address, 0x00000000u);
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                set_register(mipi_control_address, 0x00000158u, 0x40, 0x00);
+                write_register(mipi_control_address, 0x00000158u);
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                set_register(0xb044, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0xb004, 0x0000000au, 0x40, 0x00); // unknown address
-                set_register(0xb040, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0xb0c8, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0xb040, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0xb040, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0x0000, 0x4f006442u, 0x40, 0x00); // unknown address
-                set_register(0x0000, 0x0f006442u, 0x40, 0x00); // unknown address
-                set_register(0x00b8, 0x00000400u, 0x40, 0x00); // unknown address
-                set_register(0x00b8, 0x00000400u, 0x40, 0x00); // unknown address
-                set_register(0xb07c, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0xb074, 0x00000002u, 0x40, 0x00); // unknown address
-                set_register(0xb078, 0x000000a0u, 0x40, 0x00); // unknown address
-                set_register(0x00c0, 0x00000110u, 0x40, 0x00); // unknown address
-                set_register(0x00c0, 0x00000210u, 0x40, 0x00); // unknown address
-                set_register(0xb120, 0x00000001u, 0x40, 0x00); // unknown address
-                set_register(0xe120, 0x00000000u, 0x40, 0x00); // unknown address
-                set_register(0xb068, 0x00000004u, 0x40, 0x00); // unknown address
-                set_register(0xb07c, 0x00000001u, 0x40, 0x00); // unknown address
-                set_register(0xb07c, 0x00000003u, 0x40, 0x00); // unknown address
-                set_register(0x00b8, 0x00000401u, 0x40, 0x00); // unknown address
-                set_register(0x00b8, 0x00000409u, 0x40, 0x00); // unknown address
-                set_register(0x0000, 0x4f006442u, 0x40, 0x00); // unknown address
-                set_register(0x0000, 0x4f00644au, 0x40, 0x00); // unknown address
-                set_register(0xb080, 0x00000077u, 0x40, 0x00); // unknown address
-                set_register(0xb084, 0x0000000fu, 0x40, 0x00); // unknown address
-                set_register(0xb088, 0x00000037u, 0x40, 0x00); // unknown address
-                set_register(0xb08c, 0x00000037u, 0x40, 0x00); // unknown address
-                set_register(0xb090, 0x000000dfu, 0x40, 0x00); // unknown address
-                set_register(0xb094, 0x00000057u, 0x40, 0x00); // unknown address
-                set_register(0xb098, 0x00000037u, 0x40, 0x00); // unknown address
-                set_register(0xb09c, 0x00000067u, 0x40, 0x00); // unknown address
-                set_register(0xb0a0, 0x00000037u, 0x40, 0x00); // unknown address
-                set_register(0xb0a4, 0x0000002fu, 0x40, 0x00); // unknown address
-                set_register(0xb0ac, 0x00000028u, 0x40, 0x00); // unknown address
-                set_register(0xb0cc, 0x00000001u, 0x40, 0x00); // unknown address
-                set_register(mipi_control_address, 0x000002f8u, 0x40, 0x00);
-                set_register(0xb004, 0x0000008au, 0x40, 0x00); // unknown address
-                set_register(0xb01c, 0x00000030u, 0x40, 0x00); // unknown address
-                set_register(mipi_packet_size_address, 0x00002000u, 0x40, 0x00);
-                set_register(0xb02c, 0x000000ffu, 0x40, 0x00); // unknown address
-                set_register(mipi_frame_blanking_address, 0x00003e80u, 0x40, 0x00);
-                set_register(mipi_frame_period_address, 0x00000fa0u, 0x40, 0x00);
-                set_register(0xa000, 0x000b0501u, 0x40, 0x00); // unknown address
-                set_register(0xa008, 0x00002405u, 0x40, 0x00); // unknown address
-                set_register(0xa004, 0x000b0501u, 0x40, 0x00); // unknown address
-                set_register(0xa020, 0x00000150u, 0x40, 0x00); // unknown address
-                set_register(0xb040, 0x00000007u, 0x40, 0x00); // unknown address
-                set_register(0xb064, 0x00000006u, 0x40, 0x00); // unknown address
-                set_register(0xb040, 0x0000000fu, 0x40, 0x00); // unknown address
-                set_register(0xb004, 0x0000008au, 0x40, 0x00); // unknown address
-                set_register(0xb0c8, 0x00000003u, 0x40, 0x00); // unknown address
-                set_register(0xb044, 0x00000001u, 0x40, 0x00); // unknown address
-                set_register(mipi_control_address, 0x000002f9u, 0x40, 0x00);
-                set_register(0x7008, 0x00000001u, 0x40, 0x00); // unknown address
-                set_register(edf_pipeline_control_address, 0x00070001u, 0x40, 0x00);
-                set_register(0x8000, 0x0001e085u, 0x40, 0x00); // unknown address
-                set_register(time_base_ctrl_address, 0x00000644u, 0x40, 0x00);
-                set_register(roi_ctrl_address, 0xf0005042u, 0x40, 0x00);
-                set_register(spare0_address, 0x00000200u, 0x40, 0x00);
-                set_register(bias_diff_address, 0x11a1504du, 0x40, 0x00);
-                set_register(ro_fsm_ctrl_address, 0x00000000u, 0x40, 0x00);
-                set_register(readout_ctrl_address, 0x00000200u, 0x40, 0x00);
-                set_register(adc_control_address, 0x00000001u, 0x00, 0x00);
-                set_register(adc_control_address, 0x00007641u, 0x40, 0x00);
-                set_register(adc_control_address, 0x00000001u, 0x00, 0x00);
-                set_register(adc_control_address, 0x00007643u, 0x40, 0x00);
-                set_register(adc_misc_ctrl_address, 0x00000001u, 0x00, 0x00);
-                set_register(adc_misc_ctrl_address, 0x00000212u, 0x40, 0x00);
-                set_register(temp_ctrl_address, 0x00000001u, 0x00, 0x00);
-                set_register(temp_ctrl_address, 0x00200082u, 0x40, 0x00);
-                set_register(temp_ctrl_address, 0x00000001u, 0x00, 0x00);
-                set_register(temp_ctrl_address, 0x00200083u, 0x40, 0x00);
-                set_register(adc_control_address, 0x00000001u, 0x00, 0x00);
-                set_register(adc_control_address, 0x00007641u, 0x40, 0x00);
-                set_register(iph_mirr_ctrl_address, 0x00000001u, 0x00, 0x00);
-                set_register(iph_mirr_ctrl_address, 0x00000003u, 0x40, 0x00);
-                set_register(iph_mirr_ctrl_address, 0x00000001u, 0x00, 0x00);
-                set_register(iph_mirr_ctrl_address, 0x00000003u, 0x40, 0x00);
-                set_register(lifo_ctrl_address, 0x00000001u, 0x00, 0x00);
-                set_register(lifo_ctrl_address, 0x00000001u, 0x40, 0x00);
-                set_register(lifo_ctrl_address, 0x00000001u, 0x00, 0x00);
-                set_register(lifo_ctrl_address, 0x00000003u, 0x40, 0x00);
-                set_register(lifo_ctrl_address, 0x00000001u, 0x00, 0x00);
-                set_register(lifo_ctrl_address, 0x00000007u, 0x40, 0x00);
-                set_register(erc_reserved_6000_address, 0x00000001u, 0x00, 0x00);
-                set_register(erc_reserved_6000_address, 0x00155400u, 0x40, 0x00);
-                set_register(in_drop_rate_control_address, 0x00000001u, 0x00, 0x00);
-                set_register(in_drop_rate_control_address, 0x00000001u, 0x40, 0x00);
-                set_register(reference_period_address, 0x00000001u, 0x00, 0x00);
-                set_register(reference_period_address, 0x000000c8u, 0x40, 0x00);
-                set_register(td_target_event_rate_address, 0x00000001u, 0x00, 0x00);
-                set_register(td_target_event_rate_address, 0x00000fa0u, 0x40, 0x00);
-                set_register(erc_enable_address, 0x00000001u, 0x00, 0x00);
-                set_register(erc_enable_address, 0x00000003u, 0x40, 0x00);
+                write_register(0xb044, 0x00000000u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(300));
+                write_register(0xb004, 0x0000000au); // unknown address
+                write_register(0xb040, 0x00000000u); // unknown address
+                write_register(0xb0c8, 0x00000000u); // unknown address
+                write_register(0xb040, 0x00000000u); // unknown address
+                write_register(0xb040, 0x00000000u); // unknown address
+                write_register(0x0000, 0x4f006442u); // unknown address
+                write_register(0x0000, 0x0f006442u); // unknown address
+                write_register(0x00b8, 0x00000400u); // unknown address
+                write_register(0x00b8, 0x00000400u); // unknown address
+                write_register(0xb07c, 0x00000000u); // unknown address
+                write_register(0xb074, 0x00000002u); // unknown address
+                write_register(0xb078, 0x000000a0u); // unknown address
+                write_register(0x00c0, 0x00000110u); // unknown address
+                write_register(0x00c0, 0x00000210u); // unknown address
+                write_register(0xb120, 0x00000001u); // unknown address
+                write_register(0xe120, 0x00000000u); // unknown address
+                write_register(0xb068, 0x00000004u); // unknown address
+                write_register(0xb07c, 0x00000001u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+                write_register(0xb07c, 0x00000003u); // unknown address
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                write_register(0x00b8, 0x00000401u); // unknown address
+                write_register(0x00b8, 0x00000409u); // unknown address
+                write_register(0x0000, 0x4f006442u); // unknown address
+                write_register(0x0000, 0x4f00644au); // unknown address
+                write_register(0xb080, 0x00000077u); // unknown address
+                write_register(0xb084, 0x0000000fu); // unknown address
+                write_register(0xb088, 0x00000037u); // unknown address
+                write_register(0xb08c, 0x00000037u); // unknown address
+                write_register(0xb090, 0x000000dfu); // unknown address
+                write_register(0xb094, 0x00000057u); // unknown address
+                write_register(0xb098, 0x00000037u); // unknown address
+                write_register(0xb09c, 0x00000067u); // unknown address
+                write_register(0xb0a0, 0x00000037u); // unknown address
+                write_register(0xb0a4, 0x0000002fu); // unknown address
+                write_register(0xb0ac, 0x00000028u); // unknown address
+                write_register(0xb0cc, 0x00000001u); // unknown address
+                write_register(mipi_control_address, 0x000002f8u);
+                write_register(0xb004, 0x0000008au); // unknown address
+                write_register(0xb01c, 0x00000030u); // unknown address
+                write_register(mipi_packet_size_address, 0x00002000u);
+                write_register(0xb02c, 0x000000ffu); // unknown address
+                write_register(mipi_frame_blanking_address, 0x00003e80u);
+                write_register(mipi_frame_period_address, 0x00000fa0u);
+                write_register(0xa000, 0x000b0501u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa008, 0x00002405u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa004, 0x000b0501u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa020, 0x00000150u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xb040, 0x00000007u); // unknown address
+                write_register(0xb064, 0x00000006u); // unknown address
+                write_register(0xb040, 0x0000000fu); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+                write_register(0xb004, 0x0000008au); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xb0c8, 0x00000003u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xb044, 0x00000001u); // unknown address
+                write_register(mipi_control_address, 0x000002f9u);
+                write_register(0x7008, 0x00000001u); // unknown address
+                write_register(edf_pipeline_control_address, 0x00070001u);
+                write_register(0x8000, 0x0001e085u); // unknown address
+                write_register(time_base_ctrl_address, 0x00000644u);
+                write_register(roi_ctrl_address, 0xf0005042u);
+                write_register(spare0_address, 0x00000200u);
+                write_register(bias_diff_address, 0x11a1504du);
+                write_register(ro_fsm_ctrl_address, 0x00000000u);
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                write_register(readout_ctrl_address, 0x00000200u);
+                // }
+
+                read_register(adc_control_address);
+                write_register(adc_control_address, 0x00007641u);
+                read_register(adc_control_address);
+                write_register(adc_control_address, 0x00007643u);
+                read_register(adc_misc_ctrl_address);
+                write_register(adc_misc_ctrl_address, 0x00000212u);
+                read_register(temp_ctrl_address);
+                write_register(temp_ctrl_address, 0x00200082u);
+                read_register(temp_ctrl_address);
+                write_register(temp_ctrl_address, 0x00200083u);
+                read_register(adc_control_address);
+                write_register(adc_control_address, 0x00007641u);
+                read_register(iph_mirr_ctrl_address);
+                write_register(iph_mirr_ctrl_address, 0x00000003u);
+                read_register(iph_mirr_ctrl_address);
+                write_register(iph_mirr_ctrl_address, 0x00000003u);
+                read_register(lifo_ctrl_address);
+                write_register(lifo_ctrl_address, 0x00000001u);
+                read_register(lifo_ctrl_address);
+                write_register(lifo_ctrl_address, 0x00000003u);
+                read_register(lifo_ctrl_address);
+                write_register(lifo_ctrl_address, 0x00000007u);
+                read_register(erc_reserved_6000_address);
+                write_register(erc_reserved_6000_address, 0x00155400u);
+                read_register(in_drop_rate_control_address);
+                write_register(in_drop_rate_control_address, 0x00000001u);
+                read_register(reference_period_address);
+                write_register(reference_period_address, 0x000000c8u);
+                read_register(td_target_event_rate_address);
+                write_register(td_target_event_rate_address, 0x00000fa0u);
+                read_register(erc_enable_address);
+                write_register(erc_enable_address, 0x00000003u);
 
                 // erc
-                set_register(erc_reserved_602C_address, 0x00000001u, 0x00, 0x00);
-                set_register(erc_reserved_602C_address, 0x00000001u, 0x40, 0x00);
+                read_register(erc_reserved_602C_address);
+                write_register(erc_reserved_602C_address, 0x00000001u);
                 for (uint16_t address = erc_reserved_6800_6B98_begin; address < erc_reserved_6800_6B98_end;
                      address += 4) {
-                    set_register(address, 0x00000001u, 0x00, 0x00);
-                    set_register(address, 0x08080808u, 0x40, 0x00);
+                    read_register(address);
+                    write_register(address, 0x08080808u);
                 }
-                set_register(erc_reserved_602C_address, 0x00000001u, 0x00, 0x00);
-                set_register(erc_reserved_602C_address, 0x00000002u, 0x40, 0x00);
+                read_register(erc_reserved_602C_address);
+                write_register(erc_reserved_602C_address, 0x00000002u);
 
                 // t_drop_lut
                 for (uint16_t address = t_drop_lut_begin; address < t_drop_lut_end; address += 4) {
-                    set_register(address, 0x00000001u, 0x00, 0x00);
-                    set_register(
-                        address,
-                        (static_cast<uint32_t>(address / 2 + 1) << 16) | (static_cast<uint32_t>(address / 2)),
-                        0x40,
-                        0x00);
+                    read_register(address);
+                    write_register(
+                        address, (static_cast<uint32_t>(address / 2 + 1) << 16) | (static_cast<uint32_t>(address / 2)));
                 }
 
-                set_register(t_dropping_control_address, 0x00000001u, 0x00, 0x00);
-                set_register(t_dropping_control_address, 0x00000000u, 0x40, 0x00);
-                set_register(h_dropping_control_address, 0x00000001u, 0x00, 0x00);
-                set_register(h_dropping_control_address, 0x00000000u, 0x40, 0x00);
-                set_register(v_dropping_control_address, 0x00000001u, 0x00, 0x00);
-                set_register(v_dropping_control_address, 0x00000000u, 0x40, 0x00);
-                set_register(erc_reserved_6000_address, 0x00000001u, 0x00, 0x00);
-                set_register(erc_reserved_6000_address, 0x00155401u, 0x40, 0x00);
-                set_register(t_dropping_control_address, 0x00000001u, 0x00, 0x00);
-                set_register(t_dropping_control_address, 0x00000001u, 0x40, 0x00);
-                set_register(td_target_event_rate_address, 0x00000fa0u, 0x40, 0x00);
-                set_register(bias_fo_address, 0x00000001u, 0x00, 0x00);
-                set_register(bias_hpf_address, 0x00000001u, 0x00, 0x00);
-                set_register(bias_diff_on_address, 0x00000001u, 0x00, 0x00);
-                set_register(bias_diff_address, 0x00000001u, 0x00, 0x00);
-                set_register(bias_diff_off_address, 0x00000001u, 0x00, 0x00);
-                set_register(bias_refr_address, 0x00000001u, 0x00, 0x00);
+                read_register(t_dropping_control_address);
+                write_register(t_dropping_control_address, 0x00000000u);
+                read_register(h_dropping_control_address);
+                write_register(h_dropping_control_address, 0x00000000u);
+                read_register(v_dropping_control_address);
+                write_register(v_dropping_control_address, 0x00000000u);
+                read_register(erc_reserved_6000_address);
+                write_register(erc_reserved_6000_address, 0x00155401u);
+                read_register(t_dropping_control_address);
+                write_register(t_dropping_control_address, 0x00000000u);
+                write_register(td_target_event_rate_address, 0x00000fa0u);
 
                 // td_roi_x
                 for (uint16_t address = td_roi_x_begin; address < td_roi_x_end; address += 4) {
-                    set_register(address, 0x00000001u, 0x00, 0x00);
-                    set_register(address, 0x00000000u, 0x40, 0x00);
+                    read_register(address);
+                    write_register(address, 0x00000000u);
                 }
 
                 // td_roi_y
                 for (uint16_t address = td_roi_y_begin; address < td_roi_y_end; address += 4) {
-                    set_register(address, 0x00000001u, 0x00, 0x00);
-                    set_register(address, address == td_roi_y_end - 4 ? 0x00ff0000u : 0x00000000u, 0x40, 0x00);
+                    read_register(address);
+                    write_register(address, address == td_roi_y_end - 4 ? 0x00ff0000u : 0x00000000u);
                 }
 
-                set_register(edf_reserved_7004_address, 0x00000001u, 0x00, 0x00);
-                set_register(edf_reserved_7004_address, 0x0000c1ffu, 0x40, 0x00);
+                read_register(edf_reserved_7004_address);
+                write_register(edf_reserved_7004_address, 0x0000c1ffu);
                 for (;;) {
                     std::vector<uint8_t> buffer(1 << 17);
                     _interface.bulk_transfer_accept_timeout("flushing the camera", 0x81, buffer, 100);
@@ -812,22 +843,22 @@ namespace sepia {
                     }
                 }
                 bulk_request({0x72, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000);
-                set_register(bias_diff_off_address, 0x11a10049u, 0x40, 0x00);
-                set_register(bias_diff_on_address, 0x11a10066u, 0x40, 0x00);
-                set_register(bias_fo_address, 0x11a10053u, 0x40, 0x00);
-                set_register(bias_hpf_address, 0x11a10000u, 0x40, 0x00);
-                set_register(bias_refr_address, 0x11a10014u, 0x40, 0x00);
-                set_register(reference_period_address, 0x00000001u, 0x00, 0x00);
-                set_register(td_target_event_rate_address, 0x00000001u, 0x00, 0x00);
-                set_register(erc_reserved_6000_address, 0x00000001u, 0x00, 0x00);
-                set_register(erc_reserved_6000_address, 0x00000001u, 0x00, 0x00);
-                set_register(t_dropping_control_address, 0x00000001u, 0x00, 0x00);
-                set_register(mipi_control_address, 0x000002f9u, 0x40, 0x00);
-                set_register(ro_ctrl_address, 0x00000000u, 0x40, 0x00);
-                set_register(time_base_ctrl_address, 0x00000001u, 0x00, 0x00);
-                set_register(time_base_ctrl_address, 0x00000645u, 0x40, 0x00);
-                set_register(0x002c, 0x0022c724u, 0x40, 0x00); // unknown address
-                set_register(roi_ctrl_address, 0xf0005442u, 0x40, 0x00);
+                send_parameters(camera_parameters, true);
+                read_register(reference_period_address);
+                read_register(td_target_event_rate_address);
+                read_register(erc_reserved_6000_address);
+                read_register(erc_reserved_6000_address);
+                read_register(t_dropping_control_address);
+
+                // issd_evk3_imx636_start in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
+                write_register(mipi_control_address, 0x000002f9u);
+                write_register(ro_ctrl_address, 0x00000000u);
+                read_register(time_base_ctrl_address);
+                write_register(time_base_ctrl_address, 0x00000645u);
+                write_register(0x002c, 0x0022c724u); // unknown address
+                write_register(roi_ctrl_address, 0xf0005442u);
+                // }
+
                 const auto bulk_timeout =
                     static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
                 _loop = std::thread([this, bulk_timeout]() {
@@ -837,6 +868,7 @@ namespace sepia {
                             buffer.resize(1 << 17);
                             _interface.bulk_transfer_accept_timeout("reading events", 0x81, buffer, bulk_timeout);
                             if (!buffer.empty()) {
+                                //printf("read %llu bytes\n", buffer.size()); // @DEV
                                 this->push(buffer);
                             }
                         }
@@ -893,14 +925,14 @@ namespace sepia {
                 return _interface.bulk_transfer("bulk response", 0x82, std::move(bytes), timeout);
             }
 
-            /// set_register writes data to a 4-bytes register
-            virtual std::vector<uint8_t> set_register(uint16_t address, uint32_t value, uint8_t byte3, uint8_t byte14) {
-                auto echo = bulk_request(
+            /// write_register writes data to a 4-bytes register
+            virtual std::vector<uint8_t> write_register(uint32_t address, uint32_t value) {
+                return bulk_request(
                     {
                         0x02,
                         0x01,
                         0x01,
-                        byte3,
+                        0x40,
                         0x0c,
                         0x00,
                         0x00,
@@ -911,22 +943,161 @@ namespace sepia {
                         0x00,
                         static_cast<uint8_t>(address & 0xff),
                         static_cast<uint8_t>((address >> 8) & 0xff),
-                        byte14,
-                        0x00,
+                        static_cast<uint8_t>((address >> 16) & 0xff),
+                        static_cast<uint8_t>((address >> 24) & 0xff),
                         static_cast<uint8_t>(value & 0xff),
                         static_cast<uint8_t>((value >> 8) & 0xff),
                         static_cast<uint8_t>((value >> 16) & 0xff),
                         static_cast<uint8_t>((value >> 24) & 0xff),
                     },
                     1000);
-                return echo;
+            }
+
+            /// read_register reads data from a 4-bytes register
+            virtual uint32_t read_register(uint32_t address) {
+                const auto result = bulk_request(
+                    {
+                        0x02,
+                        0x01,
+                        0x01,
+                        0x00,
+                        0x0c,
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x00,
+                        static_cast<uint8_t>(address & 0xff),
+                        static_cast<uint8_t>((address >> 8) & 0xff),
+                        static_cast<uint8_t>((address >> 16) & 0xff),
+                        static_cast<uint8_t>((address >> 24) & 0xff),
+                        0x01,
+                        0x00,
+                        0x00,
+                        0x00,
+                    },
+                    1000);
+                if (result.size() != 20) {
+                    throw std::runtime_error(
+                        std::string("read_register(") + std::to_string(address) + ") returned "
+                        + std::to_string(result.size()) + " bytes (expected 20)");
+                }
+                const auto expected_bytes = std::vector<uint8_t>({
+                    0x02,
+                    0x01,
+                    0x01,
+                    0x00,
+                    0x0c,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    static_cast<uint8_t>(address & 0xff),
+                    static_cast<uint8_t>((address >> 8) & 0xff),
+                    static_cast<uint8_t>((address >> 16) & 0xff),
+                    static_cast<uint8_t>((address >> 24) & 0xff),
+                });
+                for (std::size_t index = 0; index < expected_bytes.size(); ++index) {
+                    if (result[index] != expected_bytes[index]) {
+                        throw std::runtime_error(
+                            std::string("read_register(") + std::to_string(address) + ") returned unexpected data");
+                    }
+                }
+                return static_cast<uint32_t>(result[16]) | (static_cast<uint32_t>(result[17]) << 8)
+                       | (static_cast<uint32_t>(result[18]) << 16) | (static_cast<uint32_t>(result[19]) << 24);
             }
 
             /// reset sends destructor packets.
-            virtual void reset() {}
+            virtual void reset() {
+                // issd_evk3_imx636_stop in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
+                write_register(roi_ctrl_address, 0xf0005042u);
+                write_register(0x002c, 0x0022c324u); // unknown address
+                write_register(ro_ctrl_address, 0x00000002u);
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                read_register(time_base_ctrl_address);
+                write_register(time_base_ctrl_address, 0x00000644u);
+                write_register(mipi_control_address, 0x000002f8u);
+                std::this_thread::sleep_for(std::chrono::microseconds(300));
+                // }
+
+                // issd_evk3_imx636_destroy in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
+                write_register(0x0070, 0x00400008u); // unknown address
+                write_register(0x006c, 0x0ee47114u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
+                write_register(0xa00c, 0x00020400u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
+                write_register(0xa010, 0x00008068u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0x1104, 0x00000000u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa020, 0x00000050u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa004, 0x000b0500u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa008, 0x00002404u); // unknown address
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                write_register(0xa000, 0x000b0500u); // unknown address
+                write_register(0xb044, 0x00000000u); // unknown address
+                write_register(0xb004, 0x0000000au); // unknown address
+                write_register(0xb040, 0x0000000eu); // unknown address
+                write_register(0xb0c8, 0x00000000u); // unknown address
+                write_register(0xb040, 0x00000006u); // unknown address
+                write_register(0xb040, 0x00000004u); // unknown address
+                write_register(0x0000, 0x4f006442u); // unknown address
+                write_register(0x0000, 0x0f006442u); // unknown address
+                write_register(0x00b8, 0x00000401u); // unknown address
+                write_register(0x00b8, 0x00000400u); // unknown address
+                write_register(0xb07c, 0x00000000u); // unknown address
+                // }
+            }
 
             /// send_parameters updates the camera parameters.
             virtual void send_parameters(const parameters& camera_parameters, bool force) {
+                sepia_evk4_bias(
+                    bias_pr_address, pr, bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_fo_address, fo, bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_hpf_address, hpf, bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_diff_on_address,
+                    diff_on,
+                    bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_diff_address, diff, bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_diff_off_address,
+                    diff_off,
+                    bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_inv_address, inv, bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_refr_address, refr, bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_reqpuy_address,
+                    reqpuy,
+                    bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_reqpux_address,
+                    reqpux,
+                    bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_sendreqpdy_address,
+                    sendreqpdy,
+                    bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_unknown_1_address,
+                    unknown_1,
+                    bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
+                sepia_evk4_bias(
+                    bias_unknown_2_address,
+                    unknown_2,
+                    bgen_buf_stg(1) | bgen_mux_en | bgen_buf_en | bgen_idac_en | bgen_single);
                 _previous_parameters = camera_parameters;
             }
 

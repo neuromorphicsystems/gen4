@@ -30,11 +30,41 @@ int main(int argc, char* argv[]) {
          "                                                    defaults to first available",
          "    -r [directory], --recordings [directory]    sets the recordings directory",
          "                                                    defaults to the current directory",
+         "    --bias-pr [integer]                         sets the \"pr\" bias (defaults to 124)",
+         "    --bias-fo [integer]                         sets the \"fo\" bias (defaults to 83)",
+         "    --bias-hpf [integer]                        sets the \"hpf\" bias (defaults to 0)",
+         "    --bias-diff-on [integer]                    sets the \"diff_on\" bias (defaults to 102)",
+         "    --bias-diff [integer]                       sets the \"diff\" bias (defaults to 77)",
+         "    --bias-diff-off [integer]                   sets the \"diff_off\" bias (defaults to 73)",
+         "    --bias-inv [integer]                        sets the \"inv\" bias (defaults to 91)",
+         "    --bias-refr [integer]                       sets the \"refr\" bias (defaults to 20)",
+         "    --bias-reqpuy [integer]                     sets the \"reqpuy\" bias (defaults to 140)",
+         "    --bias-reqpux [integer]                     sets the \"reqpux\" bias (defaults to 124)",
+         "    --bias-sendreqpdy [integer]                 sets the \"sendreqpdy\" bias (defaults to 148)",
+         "    --bias-unknown-1 [integer]                  sets the \"unknown-1\" bias (defaults to 116)",
+         "    --bias-unknown-2 [integer]                  sets the \"unknown-2\" bias (defaults to 81)",
          "    -h, --help                                  shows this help message"},
         argc,
         argv,
         0,
-        {{"serial", {"s"}}, {"recordings", {"r"}}, {"log", {"l"}}},
+        {
+            {"serial", {"s"}},
+            {"recordings", {"r"}},
+            {"log", {"l"}},
+            {"bias-pr", {}},
+            {"bias-fo", {}},
+            {"bias-hpf", {}},
+            {"bias-diff-on", {}},
+            {"bias-diff", {}},
+            {"bias-diff-off", {}},
+            {"bias-inv", {}},
+            {"bias-refr", {}},
+            {"bias-reqpuy", {}},
+            {"bias-reqpux", {}},
+            {"bias-sendreqpdy", {}},
+            {"bias-unknown-1", {}},
+            {"bias-unknown-2", {}},
+        },
         {},
         [&](pontella::command command) {
             const auto available_serials = sepia::evk4::available_serials();
@@ -67,6 +97,74 @@ int main(int argc, char* argv[]) {
                     recordings_directory = recordings_directory_candidate->second;
                 }
             }
+            auto camera_parameters = sepia::evk4::default_parameters;
+            for (const auto [index, name] : {
+                     {0, "bias-pr"},
+                     {1, "bias-fo"},
+                     {2, "bias-hpf"},
+                     {3, "bias-diff-on"},
+                     {4, "bias-diff"},
+                     {5, "bias-diff-off"},
+                     {6, "bias-inv"},
+                     {7, "bias-refr"},
+                     {8, "bias-reqpuy"},
+                     {9, "bias-reqpux"},
+                     {10, "bias-sendreqpdy"},
+                     {11, "bias-unknown-1"},
+                     {12, "bias-unknown-2"},
+                 }) {
+                auto bias_candidate = command.options.find(name);
+                if (bias_candidate != command.options.end()) {
+                    const auto candidate_value = std::stoll(bias_candidate);
+                    if (candidate_value < 0 || candidate_value > 255) {
+                        throw std::runtime_error(
+                            name + " must be in the range [0, 255] (got " + std::to_string(candidate_value) + ")");
+                    }
+                    switch (index) {
+                        case 0:
+                            camera_parameters.biases.pr = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 1:
+                            camera_parameters.biases.fo = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 2:
+                            camera_parameters.biases.hpf = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 3:
+                            camera_parameters.biases.diff_on = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 4:
+                            camera_parameters.biases.diff = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 5:
+                            camera_parameters.biases.diff_off = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 6:
+                            camera_parameters.biases.inv = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 7:
+                            camera_parameters.biases.refr = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 8:
+                            camera_parameters.biases.reqpuy = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 9:
+                            camera_parameters.biases.reqpux = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 10:
+                            camera_parameters.biases.sendreqpdy = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 11:
+                            camera_parameters.biases.unknown_1 = static_cast<uint8_t>(candidate_value);
+                            break;
+                        case 12:
+                            camera_parameters.biases.unknown_2 = static_cast<uint8_t>(candidate_value);
+                            break;
+                        default:
+                            throw std::logic_error("unexpected bias index");
+                    }
+                }
+            }
 
             QQmlPropertyMap parameters;
             QGuiApplication app(argc, argv);
@@ -89,7 +187,6 @@ int main(int argc, char* argv[]) {
             }
             auto dvs_display = window->findChild<chameleon::dvs_display*>("dvs_display");
 
-            auto camera_parameters = sepia::evk4::default_parameters;
             auto local_pause = false;
             std::string filename;
             std::unique_ptr<sepia::write<sepia::type::dvs>> write;

@@ -33,7 +33,8 @@ elif sys.platform == "darwin":
     ] = "-framework IOKit -framework CoreFoundation -framework Security"
     extra_compile_args += ["-std=c++17", "-stdlib=libc++", "-O3"]
     extra_link_args += ["-std=c++17", "-stdlib=libc++", "-O3"]
-    library_dirs += [str(dirname / "third_party" / "bin" / sys.platform)]
+    include_dirs += ["/usr/local/include", "/opt/homebrew/include"]
+    library_dirs += ["/usr/local/lib", "/opt/homebrew/lib"]
     libraries += ["usb-1.0", "objc", "System"]
 elif sys.platform == "win32":
     extra_compile_args += ["/std:c++17", "/O2"]
@@ -48,11 +49,8 @@ elif sys.platform == "win32":
     libraries += ["libusb-1.0"]
 
 setuptools.setup(
-    name="psee413",
+    name="evk4",
     version="1.0.0",
-    url="https://github.com/neuromorphicsystems/psee413",
-    author="Alexandre Marcireau",
-    author_email="alexandre.marcireau@gmail.com",
     description="Read events from a Prophesee Gen 4 dev kit 1.3 (Denebola)",
     long_description="Read events from a Prophesee Gen 4 dev kit 1.3 (Denebola)",
     long_description_content_type="text/markdown",
@@ -63,12 +61,12 @@ setuptools.setup(
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: OS Independent",
     ],
-    py_modules=["psee413"],
+    py_modules=["evk4"],
     ext_modules=[
         setuptools.extension.Extension(
-            "psee413_extension",
+            "evk4_extension",
             language="c++",
-            sources=["psee413_extension.cpp"],
+            sources=["evk4_extension.cpp"],
             extra_compile_args=extra_compile_args,
             extra_link_args=extra_link_args,
             include_dirs=include_dirs,

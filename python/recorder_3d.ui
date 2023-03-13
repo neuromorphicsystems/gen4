@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+    <class>MainWindow</class>
+    <widget class="QMainWindow" name="MainWindow">
+        <property name="geometry">
+            <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>1280</width>
+                <height>720</height>
+            </rect>
+        </property>
+        <property name="windowTitle">
+            <string>MainWindow</string>
+        </property>
+        <widget class="QWidget" name="centralwidget">
+            <layout class="QVBoxLayout" name="vBoxLayout">
+                <item>
+                    <layout class="QVBoxLayout" name="verticalLayout"/>
+                </item>
+                <item>
+                    <layout class="QVBoxLayout" name="verticalLayout_2">
+                        <item>
+                            <layout class="QHBoxLayout" name="horizontalLayout_2">
+                                <item>
+                                    <widget class="QLabel" name="labelOn">
+                                        <property name="text">
+                                            <string>On threshold:</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item>
+                                    <widget class="QSlider" name="horizontalSliderOn">
+                                        <property name="autoFillBackground">
+                                            <bool>false</bool>
+                                        </property>
+                                        <property name="orientation">
+                                            <enum>Qt::Horizontal</enum>
+                                        </property>
+                                    </widget>
+                                </item>
+                            </layout>
+                        </item>
+                        <item>
+                            <layout class="QHBoxLayout" name="horizontalLayout_3">
+                                <item>
+                                    <widget class="QLabel" name="labelOff">
+                                        <property name="text">
+                                            <string>Off threshold:</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item>
+                                    <widget class="QSlider" name="horizontalSliderOff">
+                                        <property name="orientation">
+                                            <enum>Qt::Horizontal</enum>
+                                        </property>
+                                        <property name="invertedControls">
+                                            <bool>false</bool>
+                                        </property>
+                                    </widget>
+                                </item>
+                            </layout>
+                        </item>
+                        <item>
+                            <layout class="QHBoxLayout" name="horizontalLayout">
+                                <item>
+                                    <widget class="QCheckBox" name="checkBoxMirror">
+                                        <property name="text">
+                                            <string>Mirror</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item>
+                                    <widget class="QCheckBox" name="checkBoxPause">
+                                        <property name="text">
+                                            <string>Pause</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item>
+                                    <widget class="QCheckBox" name="checkBox3D">
+                                        <property name="text">
+                                            <string>3D</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item>
+                                    <widget class="QCheckBox" name="checkBoxOn">
+                                        <property name="text">
+                                            <string>Show ON</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item>
+                                    <widget class="QCheckBox" name="checkBoxOff">
+                                        <property name="text">
+                                            <string>Show OFF</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item>
+                                    <widget class="QCheckBox" name="checkBoxRecord">
+                                        <property name="text">
+                                            <string>Record</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item>
+                                    <widget class="QComboBox" name="comboBoxTheme">
+                                    </widget>
+                                </item>
+                            </layout>
+                        </item>
+                    </layout>
+                </item>
+            </layout>
+        </widget>
+    </widget>
+    <resources/>
+    <connections/>
+</ui>

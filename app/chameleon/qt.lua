@@ -36,7 +36,7 @@ local os_to_default_configuration = {
             '-framework QtQuick',
             '-framework QtQuickControls2'},
     },
-    macosx_m1 = {
+    macosx_arm = {
         moc = '/opt/homebrew/opt/qt@5/bin/moc',
         moc_includedirs = {'/opt/homebrew/opt/qt@5/include/QtQml'},
         includedirs = {
@@ -76,6 +76,12 @@ function generate_configuration(target_os, os_to_configuration)
     end
     if target_os == nil then
         target_os = os.target()
+        if target_os == "macosx" then
+            local uname_result = os.outputof("uname -m")
+            if uname_result == "arm64" then
+                target_os = "macosx_arm"
+            end
+        end
     end
     setmetatable(os_to_configuration, {__index = os_to_default_configuration})
     local configuration = os_to_configuration[target_os]

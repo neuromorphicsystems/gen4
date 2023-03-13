@@ -127,15 +127,18 @@ static PyObject* set_parameters(PyObject* self, PyObject* args) {
         }
         auto parameters = sepia::evk4::default_parameters;
         parameters.biases.pr = read_bias(biases_dict, "pr");
-        parameters.biases.fo_p = read_bias(biases_dict, "fo_p");
-        parameters.biases.fo_n = read_bias(biases_dict, "fo_n");
+        parameters.biases.fo = read_bias(biases_dict, "fo");
         parameters.biases.hpf = read_bias(biases_dict, "hpf");
         parameters.biases.diff_on = read_bias(biases_dict, "diff_on");
         parameters.biases.diff = read_bias(biases_dict, "diff");
         parameters.biases.diff_off = read_bias(biases_dict, "diff_off");
+        parameters.biases.inv = read_bias(biases_dict, "inv");
         parameters.biases.refr = read_bias(biases_dict, "refr");
         parameters.biases.reqpuy = read_bias(biases_dict, "reqpuy");
-        parameters.biases.blk = read_bias(biases_dict, "blk");
+        parameters.biases.reqpux = read_bias(biases_dict, "reqpux");
+        parameters.biases.sendreqpdy = read_bias(biases_dict, "sendreqpdy");
+        parameters.biases.unknown_1 = read_bias(biases_dict, "unknown_1");
+        parameters.biases.unknown_2 = read_bias(biases_dict, "unknown_2");
         current->data->base_camera->update_parameters(parameters);
         Py_RETURN_NONE;
     } catch (const std::exception& exception) {

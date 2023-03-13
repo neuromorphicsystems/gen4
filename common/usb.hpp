@@ -273,11 +273,8 @@ namespace sepia {
             }
             std::vector<std::string> serials;
             any_of(vendor_id, product_id, context, [&](libusb_device* device) {
-                try {
-                    interface usb_interface(context, device);
-                    serials.push_back(get_serial(usb_interface));
-                } catch (const std::runtime_error&) {
-                }
+                interface usb_interface(context, device);
+                serials.push_back(get_serial(usb_interface));
                 return false;
             });
             return serials;
