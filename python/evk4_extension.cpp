@@ -451,6 +451,7 @@ static int camera_init(PyObject* self, PyObject* args, PyObject*) {
             sepia::evk4::default_parameters,
             "",
             std::chrono::milliseconds(100),
+            64,
             [=](std::size_t dropped_bytes) {
                 std::stringstream message;
                 message << "{\"utc_timestamp\":" << now() << ",\"type\":\"drop\",\"bytes\":" << dropped_bytes << "}\n";
@@ -473,7 +474,7 @@ static struct PyModuleDef evk4_3d_extension_definition = {
     "evk4_3d_extension reads events from a Prophesee Gen 4 dev kit 1.3 (Denebola)",
     -1,
     evk4_3d_extension_methods};
-PyMODINIT_FUNC PyInit_evk4_3d_extension() {
+PyMODINIT_FUNC PyInit_evk4_extension() {
     auto module = PyModule_Create(&evk4_3d_extension_definition);
     import_array();
     camera_type.tp_name = "evk4_3d_extension.Camera";

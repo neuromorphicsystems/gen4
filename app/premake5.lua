@@ -42,29 +42,6 @@ project "evk4_recorder"
         files {"../.clang-format"}
         links {"libusb-1.0"}
 
-project "headless_recorder"
-    location "build"
-    kind "ConsoleApp"
-    language "C++"
-    defines {"SEPIA_COMPILER_WORKING_DIRECTORY='" .. project().location .. "'"}
-    files {"headless_recorder.cpp", "../common/*.hpp"}
-    filter "system:linux"
-        buildoptions {"-std=c++17"}
-        linkoptions {"-std=c++17"}
-        links {"pthread", "usb-1.0"}
-    filter "system:macosx"
-        buildoptions {"-std=c++17"}
-        linkoptions {"-std=c++17"}
-        includedirs {"/usr/local/include", "/opt/homebrew/include"}
-        libdirs {"/usr/local/lib", "/opt/homebrew/lib"}
-        links {"usb-1.0"}
-    filter "system:windows"
-        architecture "x64"
-        defines {"NOMINMAX"}
-        buildoptions {"/std:c++17"}
-        files {"../.clang-format"}
-        links {"libusb-1.0"}
-
 project "lsevk4"
     location "build"
     kind "ConsoleApp"

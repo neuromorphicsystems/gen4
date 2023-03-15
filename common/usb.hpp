@@ -95,6 +95,10 @@ namespace sepia {
                 }
             }
 
+            virtual std::shared_ptr<libusb_context> context() {
+                return _context;
+            }
+
             /// operator bool returns true if interface manages an active handle.
             explicit operator bool() const {
                 return _handle.operator bool();
@@ -110,6 +114,23 @@ namespace sepia {
             /// halt wraps libusb_clear_halt.
             virtual void halt(uint8_t endpoint) {
                 throw_on_error("halting the device", libusb_clear_halt(_handle.get(), endpoint));
+            }
+
+            /// get_device_speed wraps libusb_get_device_speed.
+            virtual int get_device_speed() {
+                return libusb_get_device_speed(_device);
+            }
+
+            /// fill_bulk_transfer wraps libusb_fill_bulk_transfer.
+            virtual void fill_bulk_transfer(
+                libusb_transfer* transfer,
+                uint8_t endpoint,
+                std::vector<uint8_t>& buffer,
+                libusb_transfer_cb_fn callback,
+                void* user_data,
+                uint32_t timeout = 0) {
+                libusb_fill_bulk_transfer(
+                    transfer, _handle.get(), endpoint, buffer.data(), buffer.size(), callback, user_data, timeout);
             }
 
             /// control_transfer wraps libusb_control_transfer.

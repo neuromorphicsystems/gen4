@@ -97,6 +97,27 @@ namespace sepia {
             _condition_variable.notify_one();
         }
 
+        /// push_bytes copies bytes from an iterator.
+        template <typename InputIterator>
+        void copy_and_push(InputIterator first, InputIterator last) {
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                const auto drop_threshold = _drop_threshold.load(std::memory_order_acquire);
+                if (drop_threshold > 0 && _buffers.size() > drop_threshold) {
+                    std::size_t dropped_bytes = 0;
+                    for (const auto& buffer : _buffers) {
+                        dropped_bytes += buffer.size();
+                    }
+                    _buffers.clear();
+                    _handle_drop(dropped_bytes);
+                }
+                _buffers.emplace_back();
+                _buffers.back().resize(static_cast<std::size_t>(std::distance(first, last)));
+                std::copy(first, last, _buffers.back().data());
+            }
+            _condition_variable.notify_one();
+        }
+
         /// set_drop_threshold changes the maximum size of the fifo.
         virtual void set_drop_threshold(std::size_t drop_threshold) {
             _drop_threshold.store(drop_threshold, std::memory_order_release);
@@ -156,6 +177,12 @@ namespace sepia {
         /// push inserts a buffer.
         virtual void push(std::vector<uint8_t>& buffer) {
             _fifo.push(buffer);
+        }
+
+        /// push_bytes copies bytes from an iterator.
+        template <typename InputIterator>
+        void copy_and_push(InputIterator first, InputIterator last) {
+            _fifo.copy_and_push(first, last);
         }
 
         HandleBuffer _handle_buffer;

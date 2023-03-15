@@ -9,9 +9,6 @@
 #include <iomanip>
 #include <sstream>
 
-#include <bitset>   // @DEV
-#include <iostream> // @DEV
-
 #define sepia_evk4_bias(address, name, flags)                                                                          \
     if (force || camera_parameters.biases.name != _previous_parameters.biases.name) {                                  \
         write_register(address, (flags) | bgen_idac_ctl(camera_parameters.biases.name));                               \
@@ -581,13 +578,15 @@ namespace sepia {
                 const parameters& camera_parameters = default_parameters,
                 const std::string& serial = {},
                 const std::chrono::steady_clock::duration& timeout = std::chrono::milliseconds(100),
+                std::size_t buffers_count = 64,
                 std::function<void(std::size_t)> handle_drop = [](std::size_t) {}) :
                 base_camera(camera_parameters),
                 sepia::buffered_camera<HandleBuffer, HandleException>(
                     std::forward<HandleBuffer>(handle_buffer),
                     std::forward<HandleException>(handle_exception),
                     timeout,
-                    std::move(handle_drop)) {
+                    std::move(handle_drop)),
+                _active_transfers(buffers_count) {
                 _interface = usb::open(name, 0x04b4, 0x00f5, get_serial, serial);
                 _interface.checked_control_transfer(
                     "control0", 0x80, 0x06, 0x0300, 0x0000, std::vector<uint8_t>({0x04, 0x03, 0x09, 0x04}), 1000);
@@ -861,20 +860,102 @@ namespace sepia {
 
                 const auto bulk_timeout =
                     static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
-                _loop = std::thread([this, bulk_timeout]() {
+
+                _loop = std::thread([this, bulk_timeout, buffers_count]() {
                     try {
-                        std::vector<uint8_t> buffer;
-                        while (this->_running.load(std::memory_order_relaxed)) {
+                        std::vector<std::vector<uint8_t>> buffers(buffers_count);
+                        std::vector<libusb_transfer*> transfers(buffers_count, nullptr);
+                        for (auto& buffer : buffers) {
                             buffer.resize(1 << 17);
-                            _interface.bulk_transfer_accept_timeout("reading events", 0x81, buffer, bulk_timeout);
-                            if (!buffer.empty()) {
-                                //printf("read %llu bytes\n", buffer.size()); // @DEV
-                                this->push(buffer);
-                            }
                         }
-                    } catch (const usb::error&) {
-                        if (this->_running.exchange(false)) {
-                            this->_handle_exception(std::make_exception_ptr(usb::device_disconnected(name)));
+                        auto callback = [](libusb_transfer* transfer) {
+                            auto that = reinterpret_cast<sepia::evk4::buffered_camera<HandleBuffer, HandleException>*>(
+                                transfer->user_data);
+                            try {
+                                switch (transfer->status) {
+                                    case LIBUSB_TRANSFER_CANCELLED: {
+                                        if (that->_active_transfers > 0) {
+                                            --that->_active_transfers;
+                                        }
+                                        break;
+                                    }
+                                    case LIBUSB_TRANSFER_COMPLETED:
+                                    case LIBUSB_TRANSFER_TIMED_OUT:
+                                    case LIBUSB_TRANSFER_STALL: {
+                                        that->copy_and_push(
+                                            transfer->buffer, transfer->buffer + transfer->actual_length);
+                                        usb::throw_on_error(
+                                            "libusb_(re)submit_transfer", libusb_submit_transfer(transfer));
+                                        break;
+                                    }
+                                    case LIBUSB_TRANSFER_OVERFLOW: {
+                                        throw std::runtime_error("LIBUSB_TRANSFER_OVERFLOW");
+                                        break;
+                                    }
+                                    case LIBUSB_TRANSFER_ERROR: {
+                                        throw std::runtime_error("LIBUSB_TRANSFER_ERROR");
+                                        break;
+                                    }
+                                    case LIBUSB_TRANSFER_NO_DEVICE: {
+                                        throw usb::device_disconnected(name);
+                                        break;
+                                    }
+                                    default: {
+                                        throw std::runtime_error(
+                                            std::string("unknown transfer status ") + std::to_string(transfer->status));
+                                        break;
+                                    }
+                                }
+                            } catch (...) {
+                                if (that->_active_transfers > 0) {
+                                    --that->_active_transfers;
+                                }
+                                if (that->_running.exchange(false)) {
+                                    that->_handle_exception(std::current_exception());
+                                }
+                            }
+                        };
+                        for (std::size_t index = 0; index < buffers_count; ++index) {
+                            transfers[index] = libusb_alloc_transfer(0);
+                            _interface.fill_bulk_transfer(
+                                transfers[index],
+                                (1 | LIBUSB_ENDPOINT_IN),
+                                buffers[index],
+                                callback,
+                                this,
+                                bulk_timeout);
+                            transfers[index]->flags &= ~LIBUSB_TRANSFER_FREE_BUFFER;
+                            transfers[index]->flags &= ~LIBUSB_TRANSFER_FREE_TRANSFER;
+                            usb::throw_on_error(
+                                std::string("libusb_submit_transfer ") + std::to_string(index),
+                                libusb_submit_transfer(transfers[index]));
+                        }
+                        auto context = _interface.context();
+                        timeval libusb_events_timeout;
+                        libusb_events_timeout.tv_sec = 1;
+                        libusb_events_timeout.tv_usec = 0;
+                        int32_t completed = 0;
+                        while (this->_running.load(std::memory_order_relaxed)) {
+                            libusb_events_timeout.tv_sec = 1;
+                            libusb_events_timeout.tv_usec = 0;
+                            usb::throw_on_error(
+                                "libusb_handle_events_completed",
+                                libusb_handle_events_timeout_completed(
+                                    context.get(), &libusb_events_timeout, &completed));
+                        }
+                        for (auto& transfer : transfers) {
+                            libusb_cancel_transfer(transfer);
+                        }
+                        while (this->_active_transfers > 0) {
+                            libusb_events_timeout.tv_sec = 0;
+                            libusb_events_timeout.tv_usec = 10000;
+                            usb::throw_on_error(
+                                "libusb_handle_events_completed",
+                                libusb_handle_events_timeout_completed(
+                                    context.get(), &libusb_events_timeout, &completed));
+                        }
+                        for (auto& transfer : transfers) {
+                            libusb_free_transfer(transfer);
                         }
                     } catch (...) {
                         if (this->_running.exchange(false)) {
@@ -1112,6 +1193,7 @@ namespace sepia {
             std::thread _loop;
             std::thread _parameters_loop;
             parameters _previous_parameters;
+            std::size_t _active_transfers;
         };
 
         /// decode implements a byte stream decoder for the PEK3SVCD camera.
@@ -1277,6 +1359,7 @@ namespace sepia {
                 const parameters& camera_parameters = default_parameters,
                 const std::string& serial = {},
                 const std::chrono::steady_clock::duration& timeout = std::chrono::milliseconds(100),
+                std::size_t buffers_count = 64,
                 std::function<void(std::size_t)> handle_drop = [](std::size_t) {}) :
                 buffered_camera<decode<HandleEvent, HandleTriggerEvent, BeforeBuffer, AfterBuffer>, HandleException>(
                     decode<HandleEvent, HandleTriggerEvent, BeforeBuffer, AfterBuffer>(
@@ -1288,6 +1371,7 @@ namespace sepia {
                     camera_parameters,
                     serial,
                     timeout,
+                    buffers_count,
                     handle_drop) {}
             camera(const camera&) = delete;
             camera(camera&& other) = delete;
@@ -1313,6 +1397,7 @@ namespace sepia {
             const parameters& camera_parameters = default_parameters,
             const std::string& serial = {},
             const std::chrono::steady_clock::duration& timeout = std::chrono::milliseconds(100),
+            std::size_t buffers_count = 64,
             std::function<void(std::size_t)> handle_drop = [](std::size_t) {}) {
             return sepia::make_unique<
                 camera<HandleEvent, HandleTriggerEvent, BeforeBuffer, AfterBuffer, HandleException>>(
@@ -1324,6 +1409,7 @@ namespace sepia {
                 camera_parameters,
                 serial,
                 timeout,
+                buffers_count,
                 std::move(handle_drop));
         }
     }

@@ -3,7 +3,7 @@ import sys
 import pathlib
 import datetime
 import point_cloud
-import psee413_3d
+import evk4
 import themes
 import time
 import vispy.app
@@ -27,9 +27,9 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
         self.setGeometry(0, 0, 1400, 800)
         self.setWindowTitle("EBC 3D")
         self.camera = camera
-        self.diff = 100
-        self.diff_on = 150
-        self.diff_off = 30
+        self.diff = 77
+        self.diff_on = 122
+        self.diff_off = 53
         self.setBiases()
         self.horizontalSliderOn.setValue(self.diff_on - self.diff)
         self.horizontalSliderOff.setValue(int(self.diff - self.diff_off))
@@ -199,11 +199,11 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
 
     def setBiases(self):
         self.camera.set_parameters(
-            psee413_3d.Parameters(
-                biases=psee413_3d.Biases(
-                    diff_on=self.diff_on,  # default 115
+            evk4.Parameters(
+                biases=evk4.Biases(
+                    diff_on=self.diff_on,  # default 102
                     diff=self.diff,
-                    diff_off=self.diff_off,  # default 52
+                    diff_off=self.diff_off,  # default 73
                 )
             )
         )
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     fps = 30  # slices per second
 
     # Camera
-    camera = psee413_3d.Camera(
+    camera = evk4.Camera(
         recordings_path=dirname / "recordings",
         log_path=dirname / "recordings" / "log.jsonl",
         slice_duration=1000000 // fps,  # µs

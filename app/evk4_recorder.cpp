@@ -14,12 +14,14 @@
 
 #pragma warning(disable : 4996)
 
-inline std::string now() {
+/*
+std::string now() {
     auto time = std::time(nullptr);
     std::stringstream stream;
     stream << std::put_time(std::localtime(&time), "%FT%H-%M-%S");
     return stream.str();
 }
+*/
 
 int main(int argc, char* argv[]) {
     return pontella::main(
@@ -98,6 +100,7 @@ int main(int argc, char* argv[]) {
                 }
             }
             auto camera_parameters = sepia::evk4::default_parameters;
+            /*
             for (const auto [index, name] : {
                      {0, "bias-pr"},
                      {1, "bias-fo"},
@@ -165,6 +168,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
+            */
 
             QQmlPropertyMap parameters;
             QGuiApplication app(argc, argv);
