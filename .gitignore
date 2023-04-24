@@ -6,3 +6,5 @@ recordings/*_log.jsonl
 __pycache__
 .DS_Store
 .vscode
+*.toml
+renders
