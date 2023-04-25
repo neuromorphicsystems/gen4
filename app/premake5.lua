@@ -10,12 +10,12 @@ workspace "recorder"
         defines {"DEBUG"}
         symbols "On"
 
-project "evk4_recorder"
+project "gen4_recorder"
     location "build"
     kind "ConsoleApp"
     language "C++"
     defines {"SEPIA_COMPILER_WORKING_DIRECTORY='" .. project().location .. "'"}
-    files {"evk4_recorder.cpp", "../common/*.hpp"}
+    files {"gen4_recorder.cpp", "../common/*.hpp"}
     files(qt.moc({
         "chameleon/source/background_cleaner.hpp",
         "chameleon/source/dvs_display.hpp"},
@@ -42,12 +42,12 @@ project "evk4_recorder"
         files {"../.clang-format"}
         links {"libusb-1.0"}
 
-project "lsevk4"
+project "lsgen4"
     location "build"
     kind "ConsoleApp"
     language "C++"
     defines {"SEPIA_COMPILER_WORKING_DIRECTORY='" .. project().location .. "'"}
-    files {"lsevk4.cpp", "../common/*.hpp"}
+    files {"lsgen4.cpp", "../common/*.hpp"}
     filter "system:linux"
         buildoptions {"-std=c++17"}
         linkoptions {"-std=c++17"}

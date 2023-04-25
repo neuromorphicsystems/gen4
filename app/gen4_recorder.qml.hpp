@@ -279,21 +279,7 @@ R"(
                             font.pointSize: 16
                         }
                         Repeater {
-                            model: [
-                                "pr",
-                                "fo",
-                                "hpf",
-                                "diff_on",
-                                "diff",
-                                "diff_off",
-                                "inv",
-                                "refr",
-                                "reqpuy",
-                                "reqpux",
-                                "sendreqpdy",
-                                "unknown_1",
-                                "unknown_2",
-                            ]
+                            model: parameters.biases_names
                             RowLayout {
                                 Layout.topMargin: 5
                                 Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft

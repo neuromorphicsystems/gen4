@@ -1,0 +1,35 @@
+{
+    "recordings": "recordings",
+    "serial": null,
+    "evk4": {
+        "biases": {
+            "pr": 124,
+            "fo": 83,
+            "hpf": 0,
+            "diff_on": 102,
+            "diff": 77,
+            "diff_off": 73,
+            "inv": 91,
+            "refr": 20,
+            "reqpuy": 140,
+            "reqpux": 124,
+            "sendreqpdy": 148,
+            "unknown_1": 116,
+            "unknown_2": 81
+        }
+    },
+    "psee413": {
+        "biases": {
+            "pr": 105,
+            "fo_p": 74,
+            "fo_n": 0,
+            "hpf": 0,
+            "diff_on": 115,
+            "diff": 80,
+            "diff_off": 52,
+            "refr": 68,
+            "reqpuy": 148,
+            "blk": 120
+        }
+    }
+}

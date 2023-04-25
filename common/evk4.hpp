@@ -64,6 +64,56 @@ namespace sepia {
             uint8_t sendreqpdy;
             uint8_t unknown_1;
             uint8_t unknown_2;
+
+            static std::vector<std::string> names() {
+                return {
+                    "pr", "fo", "hpf", "diff_on", "diff", "diff_off", "inv", "refr", "reqpuy", "reqpux", "sendreqpdy",
+                        "unknown_1", "unknown_2",
+                };
+            }
+
+            uint8_t& by_name(const std::string& name) {
+                if (name == "pr") {
+                    return pr;
+                }
+                if (name == "fo") {
+                    return fo;
+                }
+                if (name == "hpf") {
+                    return hpf;
+                }
+                if (name == "diff_on") {
+                    return diff_on;
+                }
+                if (name == "diff") {
+                    return diff;
+                }
+                if (name == "diff_off") {
+                    return diff_off;
+                }
+                if (name == "inv") {
+                    return inv;
+                }
+                if (name == "refr") {
+                    return refr;
+                }
+                if (name == "reqpuy") {
+                    return reqpuy;
+                }
+                if (name == "reqpux") {
+                    return reqpux;
+                }
+                if (name == "sendreqpdy") {
+                    return sendreqpdy;
+                }
+                if (name == "unknown_1") {
+                    return unknown_1;
+                }
+                if (name == "unknown_2") {
+                    return unknown_2;
+                }
+                throw std::runtime_error(std::string("unknown bias name \"") + name + "\"");
+            }
         };
 
         /// parameters lists the camera parameters.
