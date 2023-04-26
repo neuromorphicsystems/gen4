@@ -39,7 +39,9 @@ project "gen4_recorder"
         architecture "x64"
         defines {"NOMINMAX"}
         buildoptions {"/std:c++17"}
+        linkoptions {"/SUBSYSTEM:WINDOWS"}
         files {"../.clang-format"}
+        libdirs {"../common/libusb"}
         links {"libusb-1.0"}
 
 project "lsgen4"
@@ -63,4 +65,5 @@ project "lsgen4"
         defines {"NOMINMAX"}
         buildoptions {"/std:c++17"}
         files {"../.clang-format"}
+        libdirs {"../common/libusb"}
         links {"libusb-1.0"}

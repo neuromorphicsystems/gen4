@@ -4,6 +4,7 @@
 #include "../common/psee413.hpp"
 #include "json.hpp"
 #include <filesystem>
+#include <optional>
 
 namespace gen4 {
     struct configuration {

@@ -1,6 +1,10 @@
 #pragma once
 
+#if defined(_WIN32)
+#include "libusb/libusb.h"
+#else
 #include <libusb-1.0/libusb.h>
+#endif
 
 namespace sepia {
     namespace usb {
@@ -130,7 +134,7 @@ namespace sepia {
                 void* user_data,
                 uint32_t timeout = 0) {
                 libusb_fill_bulk_transfer(
-                    transfer, _handle.get(), endpoint, buffer.data(), buffer.size(), callback, user_data, timeout);
+                    transfer, _handle.get(), endpoint, buffer.data(), static_cast<int32_t>(buffer.size()), callback, user_data, timeout);
             }
 
             /// control_transfer wraps libusb_control_transfer.

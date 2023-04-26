@@ -81,7 +81,13 @@ void control_log(
     control_events.flush();
 }
 
+#if defined(_WIN32)
+int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow) {
+    int argc = 0;
+    char** argv = nullptr;
+#else
 int main(int argc, char* argv[]) {
+#endif
     return pontella::main(
         {"gen4_recorder displays and records events from a Gen4 camera"
          "Syntax: gen4_recorder [options]",
@@ -240,6 +246,7 @@ int main(int argc, char* argv[]) {
                     accessing_shared.clear(std::memory_order_release);
                 });
 
+            QGuiApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
             QGuiApplication app(argc, argv);
             qmlRegisterType<chameleon::background_cleaner>("Chameleon", 1, 0, "BackgroundCleaner");
             qmlRegisterType<chameleon::dvs_display>("Chameleon", 1, 0, "DvsDisplay");

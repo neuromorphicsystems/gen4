@@ -57,12 +57,12 @@ local os_to_default_configuration = {
 
     },
     windows = {
-        moc = 'c:\\Qt\\5.15.2\\msvc2019_64\\bin\\moc.exe',
-        moc_includedirs = {'c:\\Qt\\5.15.2\\msvc2019_64\\include\\QtQml'},
+        moc = 'c:\\Qt\\5.15.3\\bin\\moc.exe',
+        moc_includedirs = {'c:\\Qt\\5.15.3\\include\\QtQml'},
         includedirs = {
-            'c:\\Qt\\5.15.2\\msvc2019_64\\include',
-            'c:\\Qt\\5.15.2\\msvc2019_64\\include\\QtQml'},
-        libdirs = {'c:\\Qt\\5.15.2\\msvc2019_64\\lib'},
+            'c:\\Qt\\5.15.3\\include',
+            'c:\\Qt\\5.15.3\\include\\QtQml'},
+        libdirs = {'c:\\Qt\\5.15.3\\lib'},
         links = {'Qt5Core', 'Qt5Gui', 'Qt5Qml', 'Qt5Quick'},
         buildoptions = {},
         linkoptions = {},

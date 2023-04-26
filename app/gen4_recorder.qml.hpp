@@ -236,10 +236,10 @@ R"(
                             Layout.bottomMargin: 20
                             ComboBox {
                                 id: tau_combo_box
-                                model: ["50 ms", "100 ms", "500 ms", "1 s", "5 s", "10 s", "50 s", "100 s"]
+                                model: ["50 ms", "100 ms", "200 ms", "500 ms", "1 s", "5 s", "10 s", "50 s", "100 s"]
                                 currentIndex: 1
                                 onCurrentIndexChanged: {
-                                    dvs_display.parameter = [50, 100, 500, 1000, 5000, 10000, 50000, 100000][currentIndex] * 1000
+                                    dvs_display.parameter = [50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000][currentIndex] * 1000
                                 }
                                 palette.button: "#393939"
                                 palette.dark: "#CCCCCC"
