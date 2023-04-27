@@ -24,24 +24,27 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="04b4",ATTR{idProduct}=="00f[4-5]", MODE="0666
 ### macOS
 
 ```
-brew install libusb qt@5
+brew install libusb qt@5 premake
+git clone https://github.com/neuromorphicsystems/gen4.git
+cd gen4/app
+premake5 gmake
+cd build
+make
 ```
 
 ### Windows
 
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-```
-
-```powershell
-choco install -y visualstudio2019buildtools visualstudio2019-workload-vctools qt5-default uniextract
-```
+WIP
 
 ## Use
 
-### Ubuntu
+### Ubuntu and macOS
 
 ```
 cd gen4
 ./gen4
 ```
+
+### Windows
+
+WIP
