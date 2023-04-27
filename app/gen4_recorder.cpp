@@ -409,7 +409,7 @@ int main(int argc, char* argv[]) {
                         if (recording_stop_required) {
                             recording_stop_required = false;
                             write.reset();
-                            camera->set_drop_threshold(128);
+                            camera->set_drop_threshold(configuration.drop_threshold);
                             parameters.insert("recording_name", QVariant());
                             parameters.insert("recording_status", QVariant());
                             control_log(control_events, utc_timestamp(), "stop_recording", filename);
@@ -485,7 +485,7 @@ int main(int argc, char* argv[]) {
                     configuration.psee413_parameters,
                     serial);
             }
-            camera->set_drop_threshold(128);
+            camera->set_drop_threshold(configuration.drop_threshold);
             auto return_value = app.exec();
             if (return_value > 0) {
                 throw std::runtime_error("qt returned a non-zero code");

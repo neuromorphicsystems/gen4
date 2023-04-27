@@ -1,6 +1,7 @@
 {
     "recordings": "recordings",
     "serial": null,
+    "drop_threshold": 256,
     "evk4": {
         "biases": {
             "pr": 124,

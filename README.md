@@ -5,7 +5,7 @@
 ### Ubuntu
 
 ```
-cd gen4
+cd gen4/app
 sudo apt install curl
 curl -L https://github.com/premake/premake-core/releases/download/v5.0.0-beta2/premake-5.0.0-beta2-linux.tar.gz | tar xz
 sudo apt install -y build-essential git libusb-1.0-0-dev
@@ -20,8 +20,7 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="04b4",ATTR{idProduct}=="00f[4-5]", MODE="0666
 ```
 
 ```
-cd app
-../premake5 gmake
+./premake5 gmake
 cd build
 make
 ```
