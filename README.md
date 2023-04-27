@@ -34,7 +34,13 @@ make
 
 ### Windows
 
-WIP
+1. Install Visual Studio Community (https://visualstudio.microsoft.com/)
+2. Download https://github.com/martinrotter/qt-minimalistic-builds/releases/download/5.15.3/qt-5.15.3-dynamic-msvc2019-x86_64.7z, decompress it, and copy the directory to C:\Qt\5.15.3 (so that moc.exe is at C:\Qt\5.15.3\bin\moc.exe)
+3. Install Premake5 (https://premake.github.io/)
+
+```
+
+```
 
 ## Use
 

@@ -8,3 +8,5 @@ __pycache__
 .vscode
 *.toml
 renders
+app/premake5
+app/premake5.exe
