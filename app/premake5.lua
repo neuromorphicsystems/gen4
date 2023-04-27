@@ -18,7 +18,8 @@ project "gen4_recorder"
     files {"gen4_recorder.cpp", "../common/*.hpp"}
     files(qt.moc({
         "chameleon/source/background_cleaner.hpp",
-        "chameleon/source/dvs_display.hpp"},
+        "chameleon/source/dvs_display.hpp",
+        "chameleon/source/count_display.hpp"},
         "build/moc"))
     includedirs(qt.includedirs())
     libdirs(qt.libdirs())

@@ -16,7 +16,11 @@ R"(
             running: true
             repeat: true
             onTriggered: {
-                dvs_display.trigger_draw();
+                if (parameters.use_count_display) {
+                    count_display.trigger_draw();
+                } else {
+                    dvs_display.trigger_draw();
+                }
             }
         }
         property var showMenu: false
@@ -38,28 +42,25 @@ R"(
                     height: eventsView.height
                     color: '#191919'
                 }
-                Rectangle {
-                    id: overlay
-                    color: "transparent"
-                    border.color: "#dc533d"
-                    border.width: 0
-                }
                 DvsDisplay {
                     objectName: "dvs_display"
                     id: dvs_display
-                    width: eventsView.width
-                    height: eventsView.height
+                    width: parameters.use_count_display ? 0 : eventsView.width
+                    height: parameters.use_count_display ? 0 : eventsView.height
                     canvas_size: Qt.size(header_width, header_height)
                     parameter: 100000
                     style: DvsDisplay.Linear
                     on_colormap: ['#F4C20D', '#191919']
                     off_colormap: ['#1E88E5', '#191919']
-                    onPaintAreaChanged: {
-                        overlay.x = paint_area.x / Screen.devicePixelRatio
-                        overlay.y = paint_area.y / Screen.devicePixelRatio
-                        overlay.width = paint_area.width / Screen.devicePixelRatio
-                        overlay.height = paint_area.height / Screen.devicePixelRatio
-                    }
+                }
+                CountDisplay {
+                    objectName: "count_display"
+                    id: count_display
+                    width: parameters.use_count_display ? eventsView.width : 0
+                    height: parameters.use_count_display ? eventsView.height : 0
+                    canvas_size: Qt.size(header_width, header_height)
+                    colormap: CountDisplay.Hot
+                    discard_ratio: 0.001
                 }
             }
 
@@ -91,7 +92,7 @@ R"(
                             Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
                             text: "Recordings directory"
                             color: "#AAAAAA"
-                            font.pointSize: 16
+                            font: title_font;
                         }
                         Text {
                             Layout.maximumWidth: 310
@@ -110,7 +111,7 @@ R"(
                             Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
                             text: "Recording"
                             color: "#AAAAAA"
-                            font.pointSize: 16
+                            font: title_font;
                         }
                         Text {
                             Layout.maximumWidth: 310
@@ -135,12 +136,24 @@ R"(
                             Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
                             text: "Event rate"
                             color: "#AAAAAA"
-                            font.pointSize: 16
+                            font: title_font;
+                        }
+                        Text {
+                            Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
+                            text: parameters.event_rate
+                            color: "#FFFFFF"
+                            font: monospace_font;
+                        }
+                        Text {
+                            Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
+                            text: parameters.event_rate_on
+                            color: "#FFFFFF"
+                            font: monospace_font;
                         }
                         Text {
                             Layout.bottomMargin: 20
                             Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
-                            text: parameters.event_rate
+                            text: parameters.event_rate_off
                             color: "#FFFFFF"
                             font: monospace_font;
                         }
@@ -150,7 +163,7 @@ R"(
                             Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
                             text: "Serial"
                             color: "#AAAAAA"
-                            font.pointSize: 16
+                            font: title_font;
                         }
                         Text {
                             Layout.bottomMargin: 20
@@ -165,7 +178,7 @@ R"(
                             Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
                             text: "Display"
                             color: "#AAAAAA"
-                            font.pointSize: 16
+                            font: title_font;
                         }
                         Repeater {
                             model: ["Flip bottom-top", "Flip left-right"]
@@ -187,7 +200,7 @@ R"(
                                     Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
                                     text: modelData
                                     color: "#CCCCCC"
-                                    font.pointSize: 16
+                                    font: title_font;
                                 }
                             }
                         }
@@ -196,10 +209,15 @@ R"(
                             Layout.bottomMargin: 10
                             ComboBox {
                                 id: style_combo_box
-                                model: ["Exponential", "Linear", "Window"]
-                                currentIndex: 0
+                                model: ["Exponential", "Linear", "Window", "Count"]
+                                currentIndex: 1
                                 onCurrentIndexChanged: {
-                                    dvs_display.style = [DvsDisplay.Exponential, DvsDisplay.Linear, DvsDisplay.Window][currentIndex]
+                                    if (currentIndex < 3) {
+                                        parameters.use_count_display = false
+                                        dvs_display.style = [DvsDisplay.Exponential, DvsDisplay.Linear, DvsDisplay.Window][currentIndex]
+                                    } else {
+                                        parameters.use_count_display = true
+                                    }
                                 }
                                 palette.button: "#393939"
                                 palette.dark: "#CCCCCC"
@@ -212,7 +230,7 @@ R"(
                                     id: style_combo_box_delegate
                                     width: parent.width
                                     text: modelData
-                                    font.weight: style_combo_box.currentIndex === index ? Font.Bold : Font.Normal
+                                    font: style_combo_box.currentIndex === index ? title_font : base_font
                                     highlighted: style_combo_box.highlightedIndex === index
                                     hoverEnabled: style_combo_box.hoverEnabled
                                     background: Rectangle {
@@ -228,7 +246,7 @@ R"(
                                 Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
                                 text: "Decay"
                                 color: "#CCCCCC"
-                                font.pointSize: 16
+                                font: title_font
                             }
                         }
                         RowLayout {
@@ -239,7 +257,9 @@ R"(
                                 model: ["50 ms", "100 ms", "200 ms", "500 ms", "1 s", "5 s", "10 s", "50 s", "100 s"]
                                 currentIndex: 1
                                 onCurrentIndexChanged: {
-                                    dvs_display.parameter = [50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000][currentIndex] * 1000
+                                    var tau = [50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000][currentIndex] * 1000;
+                                    dvs_display.parameter = tau;
+                                    parameters.tau = tau;
                                 }
                                 palette.button: "#393939"
                                 palette.dark: "#CCCCCC"
@@ -252,7 +272,7 @@ R"(
                                     id: tau_combo_box_delegate
                                     width: parent.width
                                     text: modelData
-                                    font.weight: tau_combo_box.currentIndex === index ? Font.Bold : Font.Normal
+                                    font: style_combo_box.currentIndex === index ? title_font : base_font
                                     highlighted: tau_combo_box.highlightedIndex === index
                                     hoverEnabled: tau_combo_box.hoverEnabled
                                     background: Rectangle {
@@ -268,7 +288,7 @@ R"(
                                 Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
                                 text: "\u03C4"
                                 color: "#CCCCCC"
-                                font.pointSize: 16
+                                font: title_font
                             }
                         }
 
@@ -276,7 +296,7 @@ R"(
                             Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
                             text: "Biases"
                             color: "#AAAAAA"
-                            font.pointSize: 16
+                            font: title_font
                         }
                         Repeater {
                             model: parameters.biases_names
@@ -304,7 +324,7 @@ R"(
                                     Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
                                     text: modelData
                                     color: "#CCCCCC"
-                                    font.pointSize: 16
+                                    font: title_font
                                 }
                             }
                         }
@@ -313,13 +333,12 @@ R"(
             }
         }
         RoundButton {
-            text: parameters.recording_name ? "\u25FE" : "\u25CF"
+            text: parameters.recording_name ? "\uE047" : "\uE061"
             palette.button: "#393939"
             palette.buttonText: "#FFFFFF"
             x: window.width - 100
             y: 10
-            font.family: "Arial"
-            font.pointSize: 24
+            font: icons_font
             icon.width: width
             icon.height: height
             onClicked: {
@@ -332,13 +351,12 @@ R"(
             }
         }
         RoundButton {
-            text: showMenu ? "\u00D7" : "\u2699"
+            text: showMenu ? "\uE5CD" : "\uE8B8"
             palette.button: "#393939"
             palette.buttonText: "#FFFFFF"
             x: window.width - 50
             y: 10
-            font.family: "Arial"
-            font.pointSize: 24
+            font: icons_font
             icon.width: width
             icon.height: height
             onClicked: {

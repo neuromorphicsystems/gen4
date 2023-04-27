@@ -1,8 +1,11 @@
+#include "assets.hpp"
 #include "chameleon/source/background_cleaner.hpp"
+#include "chameleon/source/count_display.hpp"
 #include "chameleon/source/dvs_display.hpp"
 #include "configuration.hpp"
 #include "pontella.hpp"
 #include <QQmlPropertyMap>
+#include <QtGui/QFontDatabase>
 #include <QtGui/QGuiApplication>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlContext>
@@ -167,6 +170,8 @@ int main(int argc, char* argv[]) {
 
             // event rate, recording status, and file size
             parameters.insert("event_rate", QString("0 ev/s"));
+            parameters.insert("event_rate_on", QString("0 ev/s"));
+            parameters.insert("event_rate_off", QString("0 ev/s"));
 
             // recordings directory
             parameters.insert(
@@ -206,6 +211,9 @@ int main(int argc, char* argv[]) {
             auto recording_stop_required = false;
             auto shared_flip_left_right = false;
             auto shared_flip_bottom_top = false;
+            auto shared_use_count_display = false;
+            uint64_t shared_tau = 100000;
+            parameters.insert("use_count_display", false);
             accessing_shared.clear(std::memory_order_release);
             QQmlPropertyMap::connect(
                 &parameters,
@@ -222,6 +230,10 @@ int main(int argc, char* argv[]) {
                         shared_flip_left_right = value.toBool();
                     } else if (name == "Flip bottom-top") {
                         shared_flip_bottom_top = value.toBool();
+                    } else if (name == "use_count_display") {
+                        shared_use_count_display = value.toBool();
+                    } else if (name == "tau") {
+                        shared_tau = value.toUInt();
                     } else {
                         const auto name_string = name.toStdString();
                         if (biases_names_set.find(name_string) == biases_names_set.end()) {
@@ -250,11 +262,21 @@ int main(int argc, char* argv[]) {
             QGuiApplication app(argc, argv);
             qmlRegisterType<chameleon::background_cleaner>("Chameleon", 1, 0, "BackgroundCleaner");
             qmlRegisterType<chameleon::dvs_display>("Chameleon", 1, 0, "DvsDisplay");
+            qmlRegisterType<chameleon::count_display>("Chameleon", 1, 0, "CountDisplay");
             QQmlApplicationEngine application_engine;
-            QFont font("Monospace");
-            font.setStyleHint(QFont::Monospace);
-            font.setPointSize(15);
-            application_engine.rootContext()->setContextProperty("monospace_font", font);
+            QFontDatabase::addApplicationFontFromData(assets::opensans_regular);
+            QFontDatabase::addApplicationFontFromData(assets::opensans_semibold);
+            QFontDatabase::addApplicationFontFromData(assets::robotomono_regular);
+            QFontDatabase::addApplicationFontFromData(assets::materialicons_regular);
+            QFontDatabase font_database;
+            auto base_font = font_database.font("Open Sans", "Regular", 14);
+            auto title_font = font_database.font("Open Sans", "SemiBold", 14);
+            auto monospace_font = font_database.font("Roboto Mono", "Regular", 14);
+            auto icons_font = font_database.font("Material Icons", "Regular", 16);
+            application_engine.rootContext()->setContextProperty("base_font", base_font);
+            application_engine.rootContext()->setContextProperty("title_font", title_font);
+            application_engine.rootContext()->setContextProperty("monospace_font", monospace_font);
+            application_engine.rootContext()->setContextProperty("icons_font", icons_font);
             application_engine.rootContext()->setContextProperty("header_width", sepia::evk4::width);
             application_engine.rootContext()->setContextProperty("header_height", sepia::evk4::height);
             application_engine.rootContext()->setContextProperty("parameters", &parameters);
@@ -271,6 +293,7 @@ int main(int argc, char* argv[]) {
                 window->setFormat(format);
             }
             auto dvs_display = window->findChild<chameleon::dvs_display*>("dvs_display");
+            auto count_display = window->findChild<chameleon::count_display*>("count_display");
 
             const auto event_rate_factor = 1e6 / static_cast<double>(event_rate_resolution * event_rate_chunks);
 
@@ -282,18 +305,33 @@ int main(int argc, char* argv[]) {
             auto flip_left_right = false;
             auto flip_bottom_top = false;
             std::unique_ptr<sepia::camera> camera;
-            std::vector<std::size_t> chunk_to_count(event_rate_chunks + 1, 0);
+            std::vector<std::pair<uint64_t, uint64_t>> chunk_to_counts(event_rate_chunks + 1, {0ull, 0ull});
             std::size_t previous_active_chunk_index = 0;
             std::size_t active_chunk_index = 0;
             uint64_t active_chunk_threshold_t = 0;
             const auto locale = QLocale(QLocale::English, QLocale::Country::Australia);
+            std::size_t counts_circular_buffer_index = 0;
+            auto swapped_counts = false;
+            uint64_t count_t = 0;
+            auto use_count_display = false;
+            uint64_t tau = 0;
+            std::array<std::vector<uint32_t>, 2> counts_circular_buffer;
+            for (auto& counts : counts_circular_buffer) {
+                counts.resize(sepia::evk4::width * sepia::evk4::height);
+                std::fill(counts.begin(), counts.end(), std::numeric_limits<uint32_t>::max());
+            }
             auto handle_event = [&](sepia::dvs_event event) {
                 while (event.t > active_chunk_threshold_t) {
-                    active_chunk_index = (active_chunk_index + 1) % chunk_to_count.size();
-                    chunk_to_count[active_chunk_index] = 0;
+                    active_chunk_index = (active_chunk_index + 1) % chunk_to_counts.size();
+                    chunk_to_counts[active_chunk_index].first = 0;
+                    chunk_to_counts[active_chunk_index].second = 0;
                     active_chunk_threshold_t += event_rate_resolution;
                 }
-                ++chunk_to_count[active_chunk_index];
+                if (event.on) {
+                    ++chunk_to_counts[active_chunk_index].first;
+                } else {
+                    ++chunk_to_counts[active_chunk_index].second;
+                }
                 auto display_event = event;
                 if (flip_left_right) {
                     display_event.x = sepia::evk4::width - 1 - display_event.x;
@@ -302,12 +340,26 @@ int main(int argc, char* argv[]) {
                     display_event.y = sepia::evk4::height - 1 - display_event.y;
                 }
                 dvs_display->push_unsafe(display_event);
+                if (use_count_display) {
+                    if (display_event.t > count_t + tau) {
+                        counts_circular_buffer_index =
+                            (counts_circular_buffer_index + 1) % counts_circular_buffer.size();
+                        swapped_counts = true;
+                        count_t = display_event.t;
+                        std::fill(
+                            counts_circular_buffer[counts_circular_buffer_index].begin(),
+                            counts_circular_buffer[counts_circular_buffer_index].end(),
+                            1);
+                    }
+                    ++counts_circular_buffer[counts_circular_buffer_index]
+                                            [display_event.x + display_event.y * sepia::evk4::width];
+                }
+                previous_t = event.t;
                 if (write) {
                     if (!initial_t_set) {
                         initial_t_set = true;
                         initial_t = event.t;
                     }
-                    previous_t = event.t;
                     event.t -= initial_t;
                     write->operator()(event);
                 }
@@ -330,14 +382,29 @@ int main(int argc, char* argv[]) {
                 flip_bottom_top = shared_flip_bottom_top;
                 if (previous_active_chunk_index != active_chunk_index) {
                     previous_active_chunk_index = active_chunk_index;
-                    std::size_t event_count = 0;
-                    for (std::size_t index = active_chunk_index + 1; index < active_chunk_index + chunk_to_count.size();
+                    uint64_t event_count_on = 0;
+                    uint64_t event_count_off = 0;
+                    for (std::size_t index = active_chunk_index + 1;
+                         index < active_chunk_index + chunk_to_counts.size();
                          ++index) {
-                        event_count += chunk_to_count[index % chunk_to_count.size()];
+                        event_count_on += chunk_to_counts[index % chunk_to_counts.size()].first;
+                        event_count_off += chunk_to_counts[index % chunk_to_counts.size()].second;
                     }
                     parameters.insert(
                         "event_rate",
-                        locale.toString(static_cast<double>(event_count) * event_rate_factor, 'f', 0) + " ev/s");
+                        locale.toString(
+                            static_cast<double>(event_count_on + event_count_off) * event_rate_factor, 'f', 0)
+                            + " ev/s");
+                    parameters.insert(
+                        "event_rate_on",
+                        QString("ON  ")
+                            + locale.toString(static_cast<double>(event_count_on) * event_rate_factor, 'f', 0)
+                            + " ev/s");
+                    parameters.insert(
+                        "event_rate_off",
+                        QString("OFF ")
+                            + locale.toString(static_cast<double>(event_count_off) * event_rate_factor, 'f', 0)
+                            + " ev/s");
                     if (write) {
                         if (recording_stop_required) {
                             recording_stop_required = false;
@@ -359,8 +426,7 @@ int main(int argc, char* argv[]) {
                         const auto [timestamp, stem] = utc_timestamp_and_filename();
                         filename = sepia::join({configuration.recordings, stem + ".es"});
                         initial_t_set = false;
-                        initial_t = 0;
-                        previous_t = 0;
+                        initial_t = previous_t;
                         write = std::make_unique<sepia::write<sepia::type::dvs>>(
                             sepia::filename_to_ofstream(filename), sepia::evk4::width, sepia::evk4::height);
                         camera->set_drop_threshold(0);
@@ -368,6 +434,21 @@ int main(int argc, char* argv[]) {
                         parameters.insert("recording_name", QString::fromStdString(filename));
                         control_log(control_events, timestamp, "start_recording", filename);
                     }
+                }
+                if (shared_use_count_display != use_count_display) {
+                    if (!use_count_display) {
+                        use_count_display = true;
+                        count_t = previous_t;
+                    } else {
+                        use_count_display = false;
+                    }
+                }
+                tau = shared_tau;
+                if (swapped_counts) {
+                    const auto index = (counts_circular_buffer_index + counts_circular_buffer.size() - 1)
+                                       % counts_circular_buffer.size();
+                    count_display->assign(counts_circular_buffer[index].begin(), counts_circular_buffer[index].end());
+                    swapped_counts = false;
                 }
                 accessing_shared.clear(std::memory_order_release);
             };
