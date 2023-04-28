@@ -1,4 +1,10 @@
-# gen4
+- [Install](#install)
+    - [Ubuntu](#ubuntu)
+    - [macOS](#macos)
+    - [Windows](#windows)
+- [Use](#use)
+    - [Ubuntu and macOS](#ubuntu-and-macos)
+    - [Windows](#windows-1)
 
 ## Install
 
@@ -34,6 +40,10 @@ make
 
 ### Windows
 
+Windows users can download a pre-compiled version here: https://drive.google.com/file/d/1PKU1-IiZGfqYMU2Y6LlJevxUKrbrveJL/view?usp=sharing
+
+Follow the instructions below to build the software from source.
+
 1. Install Visual Studio Community (https://visualstudio.microsoft.com/)
 2. Download https://github.com/martinrotter/qt-minimalistic-builds/releases/download/5.15.3/qt-5.15.3-dynamic-msvc2019-x86_64.7z, decompress it, and copy the directory to C:\Qt\5.15.3 (so that moc.exe is at C:\Qt\5.15.3\bin\moc.exe)
 3. Download and unzip this repository
@@ -46,16 +56,18 @@ make
 6. Open gen4/app/build/gen4_recorder.vcxproj
 7. Retarget the solution and set the mode to release
 8. Build the solution
-9. Download https://drive.google.com/file/d/1PKU1-IiZGfqYMU2Y6LlJevxUKrbrveJL/view?usp=sharing and unzip it
+9. Download https://drive.google.com/file/d/1PKU1-IiZGfqYMU2Y6LlJevxUKrbrveJL/view?usp=sharing and unzip it (the directory contains the required shared libraries, copied from C:\Qt\5.15.3)
 10. Copy gen4/app/build/bin/release/gen4_recorder.exe to gen4-windows
 
 ## Use
+
+Edit configuration.json to change the default biases, recordings directory, and buffer overflow behhaviour (set "drop_threshold" to 0 disable paacket drop).
 
 ### Ubuntu and macOS
 
 ```sh
 cd gen4
-./gen4
+./gen4 # or ./gen4 -c configuration.json to use another configuration file
 ```
 
 ### Windows
