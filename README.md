@@ -46,7 +46,7 @@ make
 6. Open gen4/app/build/gen4_recorder.vcxproj
 7. Retarget the solution and set the mode to release
 8. Build the solution
-9. Download https://drive.google.com/file/d/1PKA04y1ADIixfkcNieFVG5sBhGe_nji-/view?usp=sharing and unzip it
+9. Download https://drive.google.com/file/d/1PKU1-IiZGfqYMU2Y6LlJevxUKrbrveJL/view?usp=sharing and unzip it
 10. Copy gen4/app/build/bin/release/gen4_recorder.exe to gen4-windows
 
 ## Use
