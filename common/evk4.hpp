@@ -45,6 +45,7 @@ namespace sepia {
         /// trigger_event represents a rising or falling edge on the camera's external pins.
         SEPIA_PACK(struct trigger_event {
             uint64_t t;
+            uint64_t system_timestamp;
             uint8_t id;
             bool rising;
         });
@@ -67,8 +68,19 @@ namespace sepia {
 
             static std::vector<std::string> names() {
                 return {
-                    "pr", "fo", "hpf", "diff_on", "diff", "diff_off", "inv", "refr", "reqpuy", "reqpux", "sendreqpdy",
-                        "unknown_1", "unknown_2",
+                    "pr",
+                    "fo",
+                    "hpf",
+                    "diff_on",
+                    "diff",
+                    "diff_off",
+                    "inv",
+                    "refr",
+                    "reqpuy",
+                    "reqpux",
+                    "sendreqpdy",
+                    "unknown_1",
+                    "unknown_2",
                 };
             }
 
@@ -1272,7 +1284,9 @@ namespace sepia {
             /// operator() decodes a buffer of bytes.
             virtual void operator()(const std::vector<uint8_t>& buffer) {
                 _before_buffer();
-                for (std::size_t index = 0; index < (buffer.size() / 2) * 2; index += 2) {
+                const auto system_timestamp =
+                    *reinterpret_cast<const uint64_t*>(buffer.data() + (buffer.size() - sizeof(uint64_t)));
+                for (std::size_t index = 0; index < ((buffer.size() - sizeof(uint64_t)) / 2) * 2; index += 2) {
                     switch (buffer[index + 1] >> 4) {
                         case 0b0000:
                             _event.y = static_cast<uint16_t>(
@@ -1363,7 +1377,10 @@ namespace sepia {
                             break;
                         case 0b1010:
                             _handle_trigger_event(
-                                {_event.t, static_cast<uint8_t>(buffer[index + 1] & 0b1111), (buffer[index] & 1) == 1});
+                                {_event.t,
+                                 system_timestamp,
+                                 static_cast<uint8_t>(buffer[index + 1] & 0b1111),
+                                 (buffer[index] & 1) == 1});
                             break;
                         case 0b1011:
                         case 0b1100:

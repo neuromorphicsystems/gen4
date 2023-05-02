@@ -10,6 +10,13 @@
 #include <vector>
 
 namespace sepia {
+    /// system_timestamp returns a monotonic arbitrary time representation in nanoseconds.
+    static uint64_t system_timestamp_now() {
+        return static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+    }
+
     /// camera is a common base type for buffered cameras.
     class camera {
         public:
@@ -100,6 +107,7 @@ namespace sepia {
         /// push_bytes copies bytes from an iterator.
         template <typename InputIterator>
         void copy_and_push(InputIterator first, InputIterator last) {
+            const auto system_timestamp = system_timestamp_now();
             {
                 std::lock_guard<std::mutex> lock(_mutex);
                 const auto drop_threshold = _drop_threshold.load(std::memory_order_acquire);
@@ -112,8 +120,13 @@ namespace sepia {
                     _handle_drop(dropped_bytes);
                 }
                 _buffers.emplace_back();
-                _buffers.back().resize(static_cast<std::size_t>(std::distance(first, last)));
+                const auto data_size = static_cast<std::size_t>(std::distance(first, last));
+                _buffers.back().resize(data_size + sizeof(system_timestamp));
                 std::copy(first, last, _buffers.back().data());
+                std::copy(
+                    reinterpret_cast<const uint8_t*>(&system_timestamp),
+                    reinterpret_cast<const uint8_t*>(&system_timestamp) + sizeof(system_timestamp),
+                    _buffers.back().data() + data_size);
             }
             _condition_variable.notify_one();
         }

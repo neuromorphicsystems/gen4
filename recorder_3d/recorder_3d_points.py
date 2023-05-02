@@ -2,7 +2,8 @@ import numpy as np
 import sys
 import pathlib
 import datetime
-import evk4
+import point_cloud
+import evk4_recorder_3d
 import themes
 import time
 import vispy.app
@@ -54,21 +55,14 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
         self.checkBoxRecord.stateChanged.connect(self.toggle_recording)
         self.comboBoxTheme.currentIndexChanged.connect(self.set_theme)
         self.stopped = False
-        self.comboBoxTheme.currentIndexChanged.connect(self.set_theme)
 
+        self.camera = camera
         self.time_window = 0.1  # s
         self.fps = fps
         self.w = 1280
         self.h = 720
         self.on_events = np.zeros(2**20, dtype=[("position", np.float32, 3)])
         self.off_events = np.zeros(2**20, dtype=[("position", np.float32, 3)])
-        self.pointSize = 0.7
-        self.scaledSize = 1.0
-        self.symbol = "square"
-        self.spherical = False
-        self.alpha = 0.5
-        self.theme = themes.default
-
         self.counts = np.array(
             [int(fps * self.time_window), 0, 0, 0, 0], dtype=np.uint64
         )
@@ -81,7 +75,7 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
         self.half_frame_duration = self.frame_duration / 2.0
 
         self.canvas = vispy.scene.SceneCanvas(
-            title="EVk4",
+            title="PSEE 413",
             size=(1280, 720),
             # keys="interactive",
             keys={
@@ -95,7 +89,7 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
             },
             resizable=True,
             show=True,
-            bgcolor=self.theme.background,
+            bgcolor=themes.default.background,
             vsync=True,
         )
         self.view = self.canvas.central_widget.add_view()
@@ -119,7 +113,7 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
                     [0, self.time_window * 10, 0],
                 ]
             ),
-            color=vispy.color.ColorArray(self.theme.axis).rgba,
+            color=vispy.color.ColorArray(themes.default.axis).rgba,
             connect="strip",
         )
         self.axis.antialias = False
@@ -134,12 +128,14 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
             face_color=vispy.color.ColorArray(themes.default.axis).rgba,
         )
         self.view.add(self.markers)
-        self.on = vispy.scene.visuals.Markers(
-            symbol=self.symbol, alpha=self.alpha, spherical=self.spherical  # type: ignore
+        self.on = vispy.scene.visuals.create_visual_node(point_cloud.PointCloudVisual)(
+            vispy.color.ColorArray(themes.default.on).rgba,
+            base_point_size=1.05 * self.space_scale,
         )
         self.view.add(self.on)
-        self.off = vispy.scene.visuals.Markers(
-            symbol=self.symbol, alpha=self.alpha, spherical=self.spherical  # type: ignore
+        self.off = vispy.scene.visuals.create_visual_node(point_cloud.PointCloudVisual)(
+            vispy.color.ColorArray(themes.default.off).rgba,
+            base_point_size=1.05 * self.space_scale,
         )
         self.view.add(self.off)
         self.updateMatrix()
@@ -168,7 +164,7 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
                     self.camera.update_points(
                         self.on_events, self.off_events, self.counts
                     )
-                self.redraw()
+                    self.redraw()
         else:
             # clean up and exit
             self.timer.stop()
@@ -186,33 +182,11 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
         )
 
     def redraw(self):
-        assert isinstance(
-            self.view.camera, vispy.scene.cameras.turntable.TurntableCamera
-        )
-        assert self.view.camera.scale_factor is not None
-        self.scaledSize = self.pointSize / self.view.camera.scale_factor
-        on_events = self.on_events[0 : self.counts[1]]["position"].reshape((-1, 3))
-        off_events = self.off_events[0 : self.counts[2]]["position"].reshape((-1, 3))
-        if not self.paused:
-            on_events[:, 2] -= self.counts[4]
-            off_events[:, 2] -= self.counts[4]
-        if self.showFrames:
-            on_events[:, 2] = (np.floor_divide(on_events[:, 2], 10000)) * 10000
-            off_events[:, 2] = (np.floor_divide(off_events[:, 2], 10000)) * 10000
-        self.on.set_data(
-            pos=on_events,
-            face_color=self.theme.on,
-            edge_color=self.theme.on,
-            size=self.scaledSize,
-            edge_width=0,
-        )
-        self.off.set_data(
-            pos=off_events,
-            face_color=self.theme.off,
-            edge_color=self.theme.off,
-            size=self.scaledSize,
-            edge_width=0,
-        )
+        end_t = float(self.counts[4])
+        self.on.end_t = end_t
+        self.off.end_t = end_t
+        self.on.set_data(self.on_events[0 : self.counts[1]])
+        self.off.set_data(self.off_events[0 : self.counts[2]])
         self.canvas.update()
 
     def setOnThreshold(self):
@@ -225,8 +199,8 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
 
     def setBiases(self):
         self.camera.set_parameters(
-            evk4.Parameters(
-                biases=evk4.Biases(
+            evk4_recorder_3d.Parameters(
+                biases=evk4_recorder_3d.Biases(
                     diff_on=self.diff_on,  # default 102
                     diff=self.diff,
                     diff_off=self.diff_off,  # default 73
@@ -262,22 +236,8 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
         self.threeD = not self.threeD
         if self.threeD:
             self.time_scale = 1e-5
-            self.symbol = "disc"
-            self.pointSize = 1.4
-            self.spherical = True
-            self.alpha = 1.0
         else:
             self.time_scale = 1e-8
-            self.symbol = "square"
-            self.pointSize = 0.7
-            self.spherical = False
-            self.alpha = 0.5
-        self.on.symbol = self.symbol
-        self.off.symbol = self.symbol
-        self.on.spherical = self.spherical
-        self.off.spherical = self.spherical
-        self.on.alpha = self.alpha
-        self.off.alpha = self.alpha
         self.updateMatrix()
         self.on.transform = vispy.visuals.transforms.linear.MatrixTransform(
             matrix=self.matrix
@@ -293,8 +253,11 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
 
     def toggle_frames(self):
         self.showFrames = not self.showFrames
+        self.on.floor_timestamps = self.showFrames
+        self.off.floor_timestamps = self.showFrames
         if not self.threeD:
             self.toggle_three()
+        self.canvas.update()
 
     def toggle_p(self):
         self.checkBoxOff.setChecked(not self.showPerspective)
@@ -325,17 +288,19 @@ class MyWindow(PyQt5.QtWidgets.QMainWindow, form_class):
             print("Recording to " + name)
 
     def set_theme(self):
-        self.theme = themes.values[self.comboBoxTheme.currentIndex()]
-        self.canvas.bgcolor = self.theme.background
+        theme = themes.values[self.comboBoxTheme.currentIndex()]
+        self.canvas.bgcolor = theme.background
+        self.on.set_color(vispy.color.ColorArray(theme.on).rgba)
+        self.off.set_color(vispy.color.ColorArray(theme.off).rgba)
         self.axis.set_data(
             pos=self.axis.pos,
-            color=vispy.color.ColorArray(self.theme.axis).rgba,
+            color=vispy.color.ColorArray(theme.axis).rgba,
             connect=self.axis.connect,
         )
         self.markers.set_data(
             pos=self.ticks_pos,
             edge_color=None,  # type: ignore
-            face_color=self.theme.axis,
+            face_color=theme.axis,
         )
 
     def exit(self):
@@ -350,7 +315,7 @@ if __name__ == "__main__":
     fps = 30  # slices per second
 
     # Camera
-    camera = evk4.Camera(
+    camera = evk4_recorder_3d.Camera(
         recordings_path=dirname / "recordings",
         log_path=dirname / "recordings" / "log.jsonl",
         slice_duration=1000000 // fps,  # µs

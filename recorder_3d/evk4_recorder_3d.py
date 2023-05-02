@@ -1,7 +1,6 @@
 import dataclasses
-import os
 import pathlib
-import evk4_extension
+import evk4_recorder_3d_extension
 import re
 import dataclasses
 
@@ -38,15 +37,27 @@ class RecordingStatus:
 recording_name_pattern = re.compile(r"^[-\w .]+$")
 
 
-class Camera(evk4_extension.Camera):
+class Camera(evk4_recorder_3d_extension.Camera):
     def __init__(
         self,
         recordings_path: pathlib.Path,
         log_path: pathlib.Path,
+        slice_duration: int,
+        slice_count: int,
+        slice_initial_capacity: int,
     ):
         recordings_path.mkdir(exist_ok=True, parents=True)
         log_path.parent.mkdir(exist_ok=True, parents=True)
-        super().__init__(recordings_path, log_path)
+        assert slice_duration > 0
+        assert slice_count > 0
+        assert slice_initial_capacity >= 0
+        super().__init__(
+            recordings_path,
+            log_path,
+            slice_duration,
+            slice_count,
+            slice_initial_capacity,
+        )
 
     def set_parameters(self, parameters: Parameters):
         super().set_parameters(dataclasses.asdict(parameters))

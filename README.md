@@ -1,10 +1,20 @@
-- [Install](#install)
-    - [Ubuntu](#ubuntu)
-    - [macOS](#macos)
-    - [Windows](#windows)
-- [Use](#use)
-    - [Ubuntu and macOS](#ubuntu-and-macos)
-    - [Windows](#windows-1)
+- [App](#app)
+    - [Install](#install)
+        - [Ubuntu](#ubuntu)
+        - [macOS](#macos)
+        - [Windows](#windows)
+    - [Use](#use)
+        - [Ubuntu and macOS](#ubuntu-and-macos)
+        - [Windows](#windows-1)
+- [Recorder 3D and Python](#recorder-3d-and-python)
+    - [Dependencies](#dependencies)
+        - [Ubuntu](#ubuntu-1)
+        - [macOS](#macos-1)
+    - [Install](#install-1)
+        - [Recorder 3D](#recorder-3d)
+        - [Python](#python)
+
+# App
 
 ## Install
 
@@ -73,3 +83,46 @@ cd gen4
 ### Windows
 
 Double-click on gen4-windows/gen4_recorder.exe.
+
+# Recorder 3D and Python
+
+Unlike the app, which supports two Gen 4 versions (Denebola dev board and EVK4), recorder 3D and the Python extension only support the EVK4.
+
+## Dependencies
+
+### Ubuntu
+
+```sh
+sudo apt install -y build-essential git libusb-1.0-0-dev python3-pip
+git clone https://github.com/neuromorphicsystems/gen4.git
+```
+
+Create _/etc/udev/rules.d/65-event-based-cameras.rules_ (as super-user) with the following content:
+
+```txt
+SUBSYSTEM=="usb", ATTR{idVendor}=="152a",ATTR{idProduct}=="84[0-1]?", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="04b4",ATTR{idProduct}=="00f[4-5]", MODE="0666"
+```
+
+### macOS
+
+```sh
+brew install libusb
+git clone https://github.com/neuromorphicsystems/gen4.git
+```
+
+## Install
+
+### Recorder 3D
+
+```sh
+cd recorder_3d
+python3 -m pip install -e .
+```
+
+### Python
+
+```sh
+cd python
+python3 -m pip install -e .
+```
