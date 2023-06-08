@@ -452,10 +452,19 @@ int main(int argc, char* argv[]) {
                 }
                 accessing_shared.clear(std::memory_order_release);
             };
+            auto handle_trigger_event = [&](sepia::evk4::trigger_event event) {
+                std::stringstream message;
+                message << "{\"t\":\"" << utc_timestamp()
+                        << "\",\"type\":\"trigger_event\",\"payload\":{\"t\":" << event.t << ",\"system_timestamp\""
+                        << event.system_timestamp << ",\"id\"" << static_cast<int32_t>(event.id)
+                        << "\"rising\":" << (event.rising ? "true" : "false") << "}}\n";
+                control_events << message.rdbuf();
+                control_events.flush();
+            };
             if (is_evk4) {
                 camera = sepia::evk4::make_camera(
                     std::move(handle_event),
-                    [&](sepia::evk4::trigger_event) {},
+                    std::move(handle_trigger_event),
                     [&]() { dvs_display->lock(); },
                     after_buffer,
                     [&](std::exception_ptr exception) {
@@ -471,7 +480,7 @@ int main(int argc, char* argv[]) {
             } else {
                 camera = sepia::psee413::make_camera(
                     std::move(handle_event),
-                    [&](sepia::psee413::trigger_event) {},
+                    std::move(handle_trigger_event),
                     [&]() { dvs_display->lock(); },
                     after_buffer,
                     [&](std::exception_ptr exception) {
