@@ -1,4 +1,6 @@
 #pragma once
+#include <stdexcept>
+#include <string>
 
 #if defined(_WIN32)
 #include "libusb/libusb.h"
@@ -298,8 +300,11 @@ namespace sepia {
             }
             std::vector<std::string> serials;
             any_of(vendor_id, product_id, context, [&](libusb_device* device) {
-                interface usb_interface(context, device);
-                serials.push_back(get_serial(usb_interface));
+                try {
+                    interface usb_interface(context, device);
+                    serials.push_back(get_serial(usb_interface));
+                } catch (const std::runtime_error&) {
+                }
                 return false;
             });
             return serials;
