@@ -455,9 +455,9 @@ int main(int argc, char* argv[]) {
             auto handle_trigger_event = [&](sepia::evk4::trigger_event event) {
                 std::stringstream message;
                 message << "{\"t\":\"" << utc_timestamp()
-                        << "\",\"type\":\"trigger_event\",\"payload\":{\"t\":" << event.t << ",\"system_timestamp\""
-                        << event.system_timestamp << ",\"id\"" << static_cast<int32_t>(event.id)
-                        << "\"rising\":" << (event.rising ? "true" : "false") << "}}\n";
+                        << "\",\"type\":\"trigger_event\",\"payload\":{\"t\":" << event.t << ",\"system_timestamp\":"
+                        << event.system_timestamp << ",\"id\":" << static_cast<int32_t>(event.id)
+                        << ",\"rising\":" << (event.rising ? "true" : "false") << "}}\n";
                 control_events << message.rdbuf();
                 control_events.flush();
             };

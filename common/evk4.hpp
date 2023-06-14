@@ -895,7 +895,7 @@ namespace sepia {
                 }
 
                 read_register(edf_reserved_7004_address);
-                write_register(edf_reserved_7004_address, 0x0000c1ffu);
+                write_register(edf_reserved_7004_address, 0x0000c5ffu);
                 for (;;) {
                     std::vector<uint8_t> buffer(1 << 17);
                     _interface.bulk_transfer_accept_timeout("flushing the camera", 0x81, buffer, 100);
@@ -1292,8 +1292,6 @@ namespace sepia {
                             _event.y = static_cast<uint16_t>(
                                 height - 1 - (buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8)));
                             break;
-                        case 0b0001:
-                            break;
                         case 0b0010:
                             _event.x = static_cast<uint16_t>(
                                 buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8));
@@ -1348,8 +1346,6 @@ namespace sepia {
                             }
                             break;
                         }
-                        case 0b0111:
-                            break;
                         case 0b1000: {
                             const auto msb_t = static_cast<uint32_t>(
                                 buffer[index] | (static_cast<uint32_t>(buffer[index + 1] & 0b1111) << 8));
@@ -1372,21 +1368,14 @@ namespace sepia {
                                     _event.t = t;
                                 }
                             }
-                        }
-                        case 0b1001:
                             break;
+                        }
                         case 0b1010:
                             _handle_trigger_event(
                                 {_event.t,
                                  system_timestamp,
                                  static_cast<uint8_t>(buffer[index + 1] & 0b1111),
                                  (buffer[index] & 1) == 1});
-                            break;
-                        case 0b1011:
-                        case 0b1100:
-                        case 0b1101:
-                        case 0b1110:
-                        case 0b1111:
                             break;
                         default:
                             break;
