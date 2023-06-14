@@ -79,7 +79,7 @@ void control_log(
     const std::string& type,
     const std::string& payload) {
     std::stringstream message;
-    message << "{\"t\":\"" << timestamp << "\",\"type\":\"" << type << "\",\"payload\":\"" << payload << "\"}\n";
+    message << "{\"t\":\"" << timestamp << "\",\"type\":\"" << type << "\",\"payload\":" << payload << "}\n";
     control_events << message.rdbuf();
     control_events.flush();
 }
@@ -298,6 +298,7 @@ int main(int argc, char* argv[]) {
             const auto event_rate_factor = 1e6 / static_cast<double>(event_rate_resolution * event_rate_chunks);
 
             std::string filename;
+            std::string filename_timestamp;
             std::unique_ptr<sepia::write<sepia::type::dvs>> write;
             uint64_t initial_t = 0;
             uint64_t previous_t = 0;
@@ -359,6 +360,13 @@ int main(int argc, char* argv[]) {
                     if (!initial_t_set) {
                         initial_t_set = true;
                         initial_t = event.t;
+                        std::stringstream message;
+                        message << "{\"t\":\"" << utc_timestamp()
+                                << "\",\"type\":\"start_recording\",\"payload\":{\"filename\":\"" << filename
+                                << "\",\"initial_t\":" << initial_t << ",\"filename_timestamp\":\""
+                                << filename_timestamp << "\"}}\n";
+                        control_events << message.rdbuf();
+                        control_events.flush();
                     }
                     event.t -= initial_t;
                     write->operator()(event);
@@ -412,7 +420,8 @@ int main(int argc, char* argv[]) {
                             camera->set_drop_threshold(configuration.drop_threshold);
                             parameters.insert("recording_name", QVariant());
                             parameters.insert("recording_status", QVariant());
-                            control_log(control_events, utc_timestamp(), "stop_recording", filename);
+                            control_log(
+                                control_events, utc_timestamp(), "stop_recording", std::string("\"") + filename + "\"");
                             filename.clear();
                         } else {
                             parameters.insert(
@@ -425,6 +434,7 @@ int main(int argc, char* argv[]) {
                         recording_start_required = false;
                         const auto [timestamp, stem] = utc_timestamp_and_filename();
                         filename = sepia::join({configuration.recordings, stem + ".es"});
+                        filename_timestamp = timestamp;
                         initial_t_set = false;
                         initial_t = previous_t;
                         write = std::make_unique<sepia::write<sepia::type::dvs>>(
@@ -432,7 +442,6 @@ int main(int argc, char* argv[]) {
                         camera->set_drop_threshold(0);
                         parameters.insert("recording_status", "0 s (0 B)");
                         parameters.insert("recording_name", QString::fromStdString(filename));
-                        control_log(control_events, timestamp, "start_recording", filename);
                     }
                 }
                 if (shared_use_count_display != use_count_display) {
@@ -455,8 +464,9 @@ int main(int argc, char* argv[]) {
             auto handle_trigger_event = [&](sepia::evk4::trigger_event event) {
                 std::stringstream message;
                 message << "{\"t\":\"" << utc_timestamp()
-                        << "\",\"type\":\"trigger_event\",\"payload\":{\"t\":" << event.t << ",\"system_timestamp\":"
-                        << event.system_timestamp << ",\"id\":" << static_cast<int32_t>(event.id)
+                        << "\",\"type\":\"trigger_event\",\"payload\":{\"t\":" << event.t
+                        << ",\"system_timestamp\":" << event.system_timestamp
+                        << ",\"id\":" << static_cast<int32_t>(event.id)
                         << ",\"rising\":" << (event.rising ? "true" : "false") << "}}\n";
                 control_events << message.rdbuf();
                 control_events.flush();
