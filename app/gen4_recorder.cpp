@@ -122,9 +122,10 @@ int main(int argc, char* argv[]) {
             auto is_evk4 = true;
             {
                 if (configuration.serial.has_value()) {
+                    serial = configuration.serial.value();
                     auto found = false;
                     for (const auto& available_serial : sepia::evk4::available_serials()) {
-                        if (available_serial == configuration.serial) {
+                        if (available_serial == serial) {
                             found = true;
                             is_evk4 = true;
                             break;
@@ -132,7 +133,7 @@ int main(int argc, char* argv[]) {
                     }
                     if (!found) {
                         for (const auto& available_serial : sepia::psee413::available_serials()) {
-                            if (available_serial == configuration.serial) {
+                            if (available_serial == serial) {
                                 found = true;
                                 is_evk4 = false;
                                 break;
