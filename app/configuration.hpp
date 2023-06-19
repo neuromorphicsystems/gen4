@@ -36,6 +36,13 @@ namespace gen4 {
             result.evk4_parameters.biases.sendreqpdy = data["evk4"]["biases"]["sendreqpdy"];
             result.evk4_parameters.biases.unknown_1 = data["evk4"]["biases"]["unknown_1"];
             result.evk4_parameters.biases.unknown_2 = data["evk4"]["biases"]["unknown_2"];
+            for (std::size_t index = 0; index < result.evk4_parameters.x_mask.size(); ++index) {
+                result.evk4_parameters.x_mask[index] = data["evk4"]["x_mask"][index];
+            }
+            for (std::size_t index = 0; index < result.evk4_parameters.y_mask.size(); ++index) {
+                result.evk4_parameters.y_mask[index] = data["evk4"]["y_mask"][index];
+            }
+            result.evk4_parameters.mask_intersection_only = data["evk4"]["mask_intersection_only"];
             result.psee413_parameters.biases.pr = data["psee413"]["biases"]["pr"];
             result.psee413_parameters.biases.fo_p = data["psee413"]["biases"]["fo_p"];
             result.psee413_parameters.biases.fo_n = data["psee413"]["biases"]["fo_n"];

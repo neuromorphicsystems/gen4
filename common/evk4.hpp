@@ -131,6 +131,9 @@ namespace sepia {
         /// parameters lists the camera parameters.
         struct parameters {
             bias_currents biases;
+            std::array<uint64_t, 20> x_mask;
+            std::array<uint64_t, 12> y_mask;
+            bool mask_intersection_only;
         };
 
         /// default_parameters provides camera parameters tuned for standard use.
@@ -150,6 +153,9 @@ namespace sepia {
                 0x74, // unknown_1;
                 0x51, // unknown_2;
             },
+            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+            false,
         };
 
         /// base_camera is a common base type for EVK4 cameras.
@@ -163,6 +169,31 @@ namespace sepia {
             base_camera& operator=(base_camera&& other) = delete;
             virtual ~base_camera() {}
         };
+
+        static constexpr uint32_t from_le_bytes(uint8_t byte0, uint8_t byte1, uint8_t byte2, uint8_t byte3) {
+            return static_cast<uint32_t>(byte0) | (static_cast<uint32_t>(byte1) << 8)
+                   | (static_cast<uint32_t>(byte2) << 16) | (static_cast<uint32_t>(byte3) << 24);
+        }
+
+        static constexpr std::array<uint8_t, 8> to_le_bytes(uint64_t value) {
+            return {
+                static_cast<uint8_t>(value & 0xff),
+                static_cast<uint8_t>((value >> 8) & 0xff),
+                static_cast<uint8_t>((value >> 16) & 0xff),
+                static_cast<uint8_t>((value >> 24) & 0xff),
+                static_cast<uint8_t>((value >> 32) & 0xff),
+                static_cast<uint8_t>((value >> 40) & 0xff),
+                static_cast<uint8_t>((value >> 48) & 0xff),
+                static_cast<uint8_t>((value >> 56) & 0xff),
+            };
+        }
+
+        static uint8_t reverse_bits(uint8_t byte) {
+            byte = ((byte & 0xF0) >> 4) | ((byte & 0x0F) << 4);
+            byte = ((byte & 0xCC) >> 2) | ((byte & 0x33) << 2);
+            byte = ((byte & 0xAA) >> 1) | ((byte & 0x55) << 1);
+            return byte;
+        }
 
         /// mask_and_shift fills in register bits.
         static constexpr uint32_t mask_and_shift(uint32_t mask, uint8_t shift, uint32_t value) {
@@ -884,15 +915,54 @@ namespace sepia {
 
                 // td_roi_x
                 for (uint16_t address = td_roi_x_begin; address < td_roi_x_end; address += 4) {
-                    read_register(address);
-                    write_register(address, 0x00000000u);
+                    const auto offset = (address - td_roi_x_begin) / 4;
+                    if (offset % 2 == 0) {
+                        write_register(
+                            address, static_cast<uint32_t>(camera_parameters.x_mask[offset / 2] & 0xffffffffu));
+                    } else {
+                        write_register(
+                            address,
+                            static_cast<uint32_t>((camera_parameters.x_mask[offset / 2] & 0xffffffff00000000u) >> 32));
+                    }
                 }
 
                 // td_roi_y
                 for (uint16_t address = td_roi_y_begin; address < td_roi_y_end; address += 4) {
-                    read_register(address);
-                    write_register(address, address == td_roi_y_end - 4 ? 0x00ff0000u : 0x00000000u);
+                    const auto offset = (address - td_roi_y_begin) / 4;
+                    if (offset % 2 == 0) {
+                        const auto bytes =
+                            to_le_bytes(camera_parameters.y_mask[camera_parameters.y_mask.size() - 1 - (offset / 2)]);
+                        const auto byte2 = std::get<0>(bytes);
+                        const auto byte3 = std::get<1>(bytes);
+                        if (offset < camera_parameters.y_mask.size() * 2 - 2) {
+                            const auto bytes = to_le_bytes(
+                                camera_parameters.y_mask[camera_parameters.y_mask.size() - 2 - (offset / 2)]);
+                            const auto byte0 = std::get<6>(bytes);
+                            const auto byte1 = std::get<7>(bytes);
+                            write_register(
+                                address,
+                                from_le_bytes(
+                                    reverse_bits(byte3),
+                                    reverse_bits(byte2),
+                                    reverse_bits(byte1),
+                                    reverse_bits(byte0)));
+                        } else {
+                            write_register(
+                                address, from_le_bytes(reverse_bits(byte3), reverse_bits(byte2), 0xff, 0x00));
+                        }
+                    } else {
+                        const auto bytes = to_le_bytes(camera_parameters.y_mask[camera_parameters.y_mask.size() - 2 - (offset / 2)]);
+                        const auto byte0 = std::get<2>(bytes);
+                        const auto byte1 = std::get<3>(bytes);
+                        const auto byte2 = std::get<4>(bytes);
+                        const auto byte3 = std::get<5>(bytes);
+                        write_register(
+                            address,
+                            from_le_bytes(
+                                reverse_bits(byte3), reverse_bits(byte2), reverse_bits(byte1), reverse_bits(byte0)));
+                    }
                 }
+                write_register(roi_ctrl_address, 0xf0005022 | (camera_parameters.mask_intersection_only ? 0 : (1 << 6)));
 
                 read_register(edf_reserved_7004_address);
                 write_register(edf_reserved_7004_address, 0x0000c5ffu);
@@ -917,7 +987,7 @@ namespace sepia {
                 read_register(time_base_ctrl_address);
                 write_register(time_base_ctrl_address, 0x00000645u);
                 write_register(0x002c, 0x0022c724u); // unknown address
-                write_register(roi_ctrl_address, 0xf0005442u);
+                write_register(roi_ctrl_address, 0xf0005422u | (camera_parameters.mask_intersection_only ? 0 : (1 << 6)));
                 // }
 
                 const auto bulk_timeout =

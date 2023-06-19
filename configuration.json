@@ -17,7 +17,10 @@
             "sendreqpdy": 148,
             "unknown_1": 116,
             "unknown_2": 81
-        }
+        },
+        "x_mask": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "y_mask": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "mask_intersection_only": false
     },
     "psee413": {
         "biases": {
