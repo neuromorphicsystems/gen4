@@ -63,7 +63,7 @@ R"(
                     discard_ratio: 0.001
                 }
             }
-
+)" R"(
             Rectangle {
                 id: menu
                 Layout.alignment: Qt.AlignCenter
@@ -187,7 +187,7 @@ R"(
                             color: "#FFFFFF"
                             font: monospace_font;
                         }
-
+)" R"(
                         // display
                         Text {
                             Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
@@ -347,6 +347,7 @@ R"(
                 }
             }
         }
+)" R"(
         Text {
             Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
             text: parameters.speed + "\nDegraded performance"
