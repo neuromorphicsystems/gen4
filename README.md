@@ -68,7 +68,7 @@ make
 
 ### Windows
 
-Windows users can download a pre-compiled version here: https://drive.google.com/file/d/1PKU1-IiZGfqYMU2Y6LlJevxUKrbrveJL/view?usp=sharing
+Windows users can download a pre-compiled version here: https://drive.google.com/file/d/1-8IyxxZ3wXqpdSKnPt6N7Hs3ZR6OkStc/view?usp=sharing
 
 Follow the instructions below to build the software from source.
 
@@ -84,7 +84,7 @@ Follow the instructions below to build the software from source.
 6. Open gen4/app/build/gen4_recorder.vcxproj
 7. Retarget the solution and set the mode to release
 8. Build the solution
-9. Download https://drive.google.com/file/d/1PKU1-IiZGfqYMU2Y6LlJevxUKrbrveJL/view?usp=sharing and unzip it (the directory contains the required shared libraries, copied from C:\Qt\5.15.3)
+9. Download https://drive.google.com/file/d/1-8IyxxZ3wXqpdSKnPt6N7Hs3ZR6OkStc/view?usp=sharing and unzip it (the directory contains the required shared libraries, copied from C:\Qt\5.15.3)
 10. Copy gen4/app/build/bin/release/gen4_recorder.exe to gen4-windows
 
 ## Use
