@@ -28,9 +28,9 @@ namespace sepia {
             return serial.str();
         }
 
-        /// available_serials returns a list of connected devices serials.
-        inline std::vector<std::string> available_serials() {
-            return usb::available_serials(0x04b4, 0x00f5, get_serial);
+        /// available_devices returns a list of connected devices serials and speeds.
+        inline std::vector<usb::device_properties> available_devices() {
+            return usb::available_devices(0x04b4, 0x00f5, get_serial);
         }
 
         /// name is the camera model.
@@ -671,7 +671,7 @@ namespace sepia {
                 const parameters& camera_parameters = default_parameters,
                 const std::string& serial = {},
                 const std::chrono::steady_clock::duration& timeout = std::chrono::milliseconds(100),
-                std::size_t buffers_count = 64,
+                std::size_t buffers_count = 32,
                 std::function<void(std::size_t)> handle_drop = [](std::size_t) {}) :
                 base_camera(camera_parameters),
                 sepia::buffered_camera<HandleBuffer, HandleException>(
@@ -1485,7 +1485,7 @@ namespace sepia {
                 const parameters& camera_parameters = default_parameters,
                 const std::string& serial = {},
                 const std::chrono::steady_clock::duration& timeout = std::chrono::milliseconds(100),
-                std::size_t buffers_count = 64,
+                std::size_t buffers_count = 32,
                 std::function<void(std::size_t)> handle_drop = [](std::size_t) {}) :
                 buffered_camera<decode<HandleEvent, HandleTriggerEvent, BeforeBuffer, AfterBuffer>, HandleException>(
                     decode<HandleEvent, HandleTriggerEvent, BeforeBuffer, AfterBuffer>(
@@ -1523,7 +1523,7 @@ namespace sepia {
             const parameters& camera_parameters = default_parameters,
             const std::string& serial = {},
             const std::chrono::steady_clock::duration& timeout = std::chrono::milliseconds(100),
-            std::size_t buffers_count = 64,
+            std::size_t buffers_count = 32,
             std::function<void(std::size_t)> handle_drop = [](std::size_t) {}) {
             return sepia::make_unique<
                 camera<HandleEvent, HandleTriggerEvent, BeforeBuffer, AfterBuffer, HandleException>>(

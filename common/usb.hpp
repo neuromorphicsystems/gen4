@@ -59,6 +59,34 @@ namespace sepia {
             return std::shared_ptr<libusb_context>(context, [](libusb_context* context) { libusb_exit(context); });
         }
 
+        /// device_speed lists known USB speeds.
+        enum class device_speed {
+            unknown,
+            low,
+            full,
+            high,
+            super,
+            super_plus,
+        };
+
+        std::string device_speed_to_string(device_speed speed) {
+            switch (speed) {
+                case device_speed::unknown:
+                    return "USB Unknown speed";
+                case device_speed::low:
+                    return "USB 1.0 Low Speed (1.5 Mb/s)";
+                case device_speed::full:
+                    return "USB 1.1 Full Speed (12 Mb/s)";
+                case device_speed::high:
+                    return "USB 2.0 High Speed (480 Mb/s)";
+                case device_speed::super:
+                    return "USB 3.0 SuperSpeed (5.0 Gb/s)";
+                case device_speed::super_plus:
+                    return "USB 3.1 SuperSpeed+ (10.0 Gb/s)";
+            }
+            return "USB Unknown speed";
+        }
+
         /// interface manages a libusb_device_handle.
         class interface {
             public:
@@ -123,8 +151,23 @@ namespace sepia {
             }
 
             /// get_device_speed wraps libusb_get_device_speed.
-            virtual int get_device_speed() {
-                return libusb_get_device_speed(_device);
+            virtual device_speed get_device_speed() {
+                const auto raw_device_speed = libusb_get_device_speed(_device);
+                switch (raw_device_speed) {
+                    case LIBUSB_SPEED_UNKNOWN:
+                        return device_speed::unknown;
+                    case LIBUSB_SPEED_LOW:
+                        return device_speed::low;
+                    case LIBUSB_SPEED_FULL:
+                        return device_speed::full;
+                    case LIBUSB_SPEED_HIGH:
+                        return device_speed::high;
+                    case LIBUSB_SPEED_SUPER:
+                        return device_speed::super;
+                    case LIBUSB_SPEED_SUPER_PLUS:
+                        return device_speed::super_plus;
+                }
+                return device_speed::unknown;
             }
 
             /// fill_bulk_transfer wraps libusb_fill_bulk_transfer.
@@ -136,7 +179,14 @@ namespace sepia {
                 void* user_data,
                 uint32_t timeout = 0) {
                 libusb_fill_bulk_transfer(
-                    transfer, _handle.get(), endpoint, buffer.data(), static_cast<int32_t>(buffer.size()), callback, user_data, timeout);
+                    transfer,
+                    _handle.get(),
+                    endpoint,
+                    buffer.data(),
+                    static_cast<int32_t>(buffer.size()),
+                    callback,
+                    user_data,
+                    timeout);
             }
 
             /// control_transfer wraps libusb_control_transfer.
@@ -288,9 +338,15 @@ namespace sepia {
             return false;
         }
 
-        /// available_serials returns a list of connected devices serials.
+        /// device_properties represents a device's serial and speed.
+        struct device_properties {
+            std::string serial;
+            device_speed speed;
+        };
+
+        /// available_devices returns a list of connected devices serials and USB speeds.
         template <typename GetSerial>
-        inline std::vector<std::string> available_serials(
+        inline std::vector<device_properties> available_devices(
             uint16_t vendor_id,
             uint16_t product_id,
             GetSerial get_serial,
@@ -298,16 +354,16 @@ namespace sepia {
             if (!context) {
                 context = make_context();
             }
-            std::vector<std::string> serials;
+            std::vector<device_properties> devices_properties;
             any_of(vendor_id, product_id, context, [&](libusb_device* device) {
                 try {
                     interface usb_interface(context, device);
-                    serials.push_back(get_serial(usb_interface));
+                    devices_properties.push_back({get_serial(usb_interface), usb_interface.get_device_speed()});
                 } catch (const std::runtime_error&) {
                 }
                 return false;
             });
-            return serials;
+            return devices_properties;
         }
 
         /// open creates an interface from a VID/PID.

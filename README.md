@@ -37,6 +37,24 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="152a",ATTR{idProduct}=="84[0-1]?", MODE="0666
 SUBSYSTEM=="usb", ATTR{idVendor}=="04b4",ATTR{idProduct}=="00f[4-5]", MODE="0666"
 ```
 
+Ubuntu 20.04 ships an older version of Qt 5. Before running `make`, replace the following lines 2 to 5 in *app/gen4_recorder.qml.hpp* from:
+
+```qml
+import QtQuick 2.15
+import QtQuick.Layouts 1.15
+import QtQuick.Window 2.15
+import QtQuick.Controls 2.15
+```
+
+to:
+
+```qml
+import QtQuick 2.7
+import QtQuick.Layouts 1.1
+import QtQuick.Window 2.7
+import QtQuick.Controls 2.7
+```
+
 ### macOS
 
 ```sh

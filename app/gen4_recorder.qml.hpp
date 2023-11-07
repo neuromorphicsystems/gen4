@@ -173,6 +173,21 @@ R"(
                             font: monospace_font;
                         }
 
+                        // speed
+                        Text {
+                            Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
+                            text: "Speed"
+                            color: "#AAAAAA"
+                            font: title_font;
+                        }
+                        Text {
+                            Layout.bottomMargin: 20
+                            Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
+                            text: parameters.speed
+                            color: "#FFFFFF"
+                            font: monospace_font;
+                        }
+
                         // display
                         Text {
                             Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
@@ -331,6 +346,15 @@ R"(
                     }
                 }
             }
+        }
+        Text {
+            Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
+            text: parameters.speed + "\nDegraded performance"
+            color: "#FFCE44"
+            font: title_font
+            x: 10
+            y: 10
+            visible: !parameters.speed.startsWith("USB 3")
         }
         RoundButton {
             text: parameters.recording_name ? "\uE047" : "\uE061"

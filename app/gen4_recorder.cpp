@@ -118,22 +118,27 @@ int main(int argc, char* argv[]) {
             QQmlPropertyMap parameters;
 
             // serial
-            std::string serial = "";
+            sepia::usb::device_properties device{
+                "",
+                sepia::usb::device_speed::unknown,
+            };
             auto is_evk4 = true;
             {
                 if (configuration.serial.has_value()) {
-                    serial = configuration.serial.value();
+                    device.serial = configuration.serial.value();
                     auto found = false;
-                    for (const auto& available_serial : sepia::evk4::available_serials()) {
-                        if (available_serial == serial) {
+                    for (const auto& available_device : sepia::evk4::available_devices()) {
+                        if (available_device.serial == device.serial) {
+                            device.speed = available_device.speed;
                             found = true;
                             is_evk4 = true;
                             break;
                         }
                     }
                     if (!found) {
-                        for (const auto& available_serial : sepia::psee413::available_serials()) {
-                            if (available_serial == serial) {
+                        for (const auto& available_device : sepia::psee413::available_devices()) {
+                            if (available_device.serial == device.serial) {
+                                device.speed = available_device.speed;
                                 found = true;
                                 is_evk4 = false;
                                 break;
@@ -141,22 +146,22 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     if (!found) {
-                        throw sepia::usb::serial_not_available(sepia::evk4::name, serial);
+                        throw sepia::usb::serial_not_available(sepia::evk4::name, device.serial);
                     }
                 } else {
                     auto found = false;
                     {
-                        const auto available_serials = sepia::evk4::available_serials();
-                        if (!available_serials.empty()) {
-                            serial = available_serials.front();
+                        const auto available_devices = sepia::evk4::available_devices();
+                        if (!available_devices.empty()) {
+                            device = available_devices.front();
                             found = true;
                             is_evk4 = true;
                         }
                     }
                     if (!found) {
-                        const auto available_serials = sepia::psee413::available_serials();
-                        if (!available_serials.empty()) {
-                            serial = available_serials.front();
+                        const auto available_devices = sepia::psee413::available_devices();
+                        if (!available_devices.empty()) {
+                            device = available_devices.front();
                             found = true;
                             is_evk4 = false;
                         }
@@ -167,7 +172,8 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
-            parameters.insert("serial", QString::fromStdString(serial));
+            parameters.insert("serial", QString::fromStdString(device.serial));
+            parameters.insert("speed", QString::fromStdString(sepia::usb::device_speed_to_string(device.speed)));
 
             // event rate, recording status, and file size
             parameters.insert("event_rate", QString("0 ev/s"));
@@ -179,7 +185,7 @@ int main(int argc, char* argv[]) {
                 "recordings_directory",
                 configuration.recordings.empty() ? QString("./") : QString::fromStdString(configuration.recordings));
             std::ofstream control_events(
-                sepia::join({configuration.recordings, serial + "_control_events.jsonl"}), std::ostream::app);
+                sepia::join({configuration.recordings, device.serial + "_control_events.jsonl"}), std::ostream::app);
             parameters.insert("recording_name", QVariant());
             parameters.insert("recording_status", QVariant());
 
@@ -487,7 +493,7 @@ int main(int argc, char* argv[]) {
                         app.quit();
                     },
                     configuration.evk4_parameters,
-                    serial);
+                    device.serial);
             } else {
                 camera = sepia::psee413::make_camera(
                     std::move(handle_event),
@@ -503,7 +509,7 @@ int main(int argc, char* argv[]) {
                         app.quit();
                     },
                     configuration.psee413_parameters,
-                    serial);
+                    device.serial);
             }
             camera->set_drop_threshold(configuration.drop_threshold);
             auto return_value = app.exec();
