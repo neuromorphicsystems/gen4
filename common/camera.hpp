@@ -26,9 +26,6 @@ namespace sepia {
         camera& operator=(const camera&) = default;
         camera& operator=(camera&& other) = default;
         virtual ~camera() {}
-
-        /// set_drop_threshold changes the maximum size of the fifo.
-        virtual void set_drop_threshold(std::size_t drop_threshold) = 0;
     };
 
     /// parametric_camera adds parameters update support to camera.
@@ -59,11 +56,20 @@ namespace sepia {
         std::condition_variable _condition_variable;
     };
 
+    /// pop_result returns the FIFO status on pop.
+    struct pop_result {
+        std::size_t used;
+        std::size_t size;
+        bool success;
+    };
+
     /// fifo implements a thread-safe buffer FIFO.
     class fifo {
         public:
-        fifo(const std::chrono::steady_clock::duration& timeout, std::function<void(std::size_t)> handle_drop) :
-            _timeout(timeout), _handle_drop(std::move(handle_drop)), _drop_threshold(0) {}
+        fifo(const std::chrono::steady_clock::duration& timeout, std::size_t fifo_size, std::function<void()> handle_drop) :
+            _timeout(timeout), _handle_drop(std::move(handle_drop)) {
+            _buffers.resize(fifo_size);
+        }
         fifo(const fifo&) = delete;
         fifo(fifo&& other) = delete;
         fifo& operator=(const fifo&) = delete;
@@ -73,33 +79,37 @@ namespace sepia {
         /// pop removes and returns the next buffer.
         /// It returns false if the specified timeout is reached before a buffer is
         /// available.
-        virtual bool pop(std::vector<uint8_t>& buffer) {
+        virtual pop_result pop(std::vector<uint8_t>& buffer) {
             std::unique_lock<std::mutex> lock(_mutex);
-            if (_buffers.empty()) {
-                if (!_condition_variable.wait_for(lock, _timeout, [this] { return !_buffers.empty(); })) {
-                    return false;
+            if (_read_index == _write_index) {
+                if (!_condition_variable.wait_for(lock, _timeout, [this] { return _read_index != _write_index; })) {
+                    return pop_result{
+                        0,
+                        _buffers.size(),
+                        false,
+                    };
                 }
             }
-            buffer.swap(_buffers.front());
-            _buffers.pop_front();
-            return true;
+            buffer.swap(_buffers[_read_index]);
+            _read_index = (_read_index + 1) % _buffers.size();
+            return pop_result{
+                (_write_index + _buffers.size() - _read_index) % _buffers.size(),
+                _buffers.size(),
+                true,
+            };
         }
 
         /// push inserts a buffer.
         virtual void push(std::vector<uint8_t>& buffer) {
             {
                 std::lock_guard<std::mutex> lock(_mutex);
-                const auto drop_threshold = _drop_threshold.load(std::memory_order_acquire);
-                if (drop_threshold > 0 && _buffers.size() > drop_threshold) {
-                    std::size_t dropped_bytes = 0;
-                    for (const auto& buffer : _buffers) {
-                        dropped_bytes += buffer.size();
-                    }
-                    _buffers.clear();
-                    _handle_drop(dropped_bytes);
+                const auto next_write_index = (_write_index + 1) % _buffers.size();
+                if (_read_index == next_write_index) {
+                    _handle_drop();
+                } else {
+                    buffer.swap(_buffers[_write_index]);
+                    _write_index = next_write_index;
                 }
-                _buffers.emplace_back();
-                buffer.swap(_buffers.back());
             }
             _condition_variable.notify_one();
         }
@@ -110,39 +120,31 @@ namespace sepia {
             const auto system_timestamp = system_timestamp_now();
             {
                 std::lock_guard<std::mutex> lock(_mutex);
-                const auto drop_threshold = _drop_threshold.load(std::memory_order_acquire);
-                if (drop_threshold > 0 && _buffers.size() > drop_threshold) {
-                    std::size_t dropped_bytes = 0;
-                    for (const auto& buffer : _buffers) {
-                        dropped_bytes += buffer.size();
-                    }
-                    _buffers.clear();
-                    _handle_drop(dropped_bytes);
+                const auto next_write_index = (_write_index + 1) % _buffers.size();
+                if (_read_index == next_write_index) {
+                    _handle_drop();
+                } else {
+                    const auto data_size = static_cast<std::size_t>(std::distance(first, last));
+                    _buffers[_write_index].resize(data_size + sizeof(system_timestamp));
+                    std::copy(first, last, _buffers[_write_index].data());
+                    std::copy(
+                        reinterpret_cast<const uint8_t*>(&system_timestamp),
+                        reinterpret_cast<const uint8_t*>(&system_timestamp) + sizeof(system_timestamp),
+                        _buffers[_write_index].data() + data_size);
+                    _write_index = next_write_index;
                 }
-                _buffers.emplace_back();
-                const auto data_size = static_cast<std::size_t>(std::distance(first, last));
-                _buffers.back().resize(data_size + sizeof(system_timestamp));
-                std::copy(first, last, _buffers.back().data());
-                std::copy(
-                    reinterpret_cast<const uint8_t*>(&system_timestamp),
-                    reinterpret_cast<const uint8_t*>(&system_timestamp) + sizeof(system_timestamp),
-                    _buffers.back().data() + data_size);
             }
             _condition_variable.notify_one();
         }
 
-        /// set_drop_threshold changes the maximum size of the fifo.
-        virtual void set_drop_threshold(std::size_t drop_threshold) {
-            _drop_threshold.store(drop_threshold, std::memory_order_release);
-        }
-
         protected:
         const std::chrono::steady_clock::duration& _timeout;
-        std::function<void(std::size_t)> _handle_drop;
-        std::atomic<std::size_t> _drop_threshold;
-        std::deque<std::vector<uint8_t>> _buffers;
+        std::function<void()> _handle_drop;
+        std::vector<std::vector<uint8_t>> _buffers;
         std::mutex _mutex;
         std::condition_variable _condition_variable;
+        std::size_t _write_index = 0;
+        std::size_t _read_index = 0;
     };
 
     /// buffered_camera represents a template-specialized generic camera.
@@ -153,17 +155,19 @@ namespace sepia {
             HandleBuffer&& handle_buffer,
             HandleException&& handle_exception,
             const std::chrono::steady_clock::duration& timeout,
-            std::function<void(std::size_t)> handle_drop) :
+            std::size_t fifo_size,
+            std::function<void()> handle_drop) :
             _handle_buffer(std::forward<HandleBuffer>(handle_buffer)),
             _handle_exception(std::forward<HandleException>(handle_exception)),
-            _fifo(timeout, std::move(handle_drop)),
+            _fifo(timeout, fifo_size, std::move(handle_drop)),
             _running(true) {
             _buffer_loop = std::thread([this]() {
                 try {
                     std::vector<uint8_t> buffer;
                     while (_running.load(std::memory_order_relaxed)) {
-                        if (_fifo.pop(buffer)) {
-                            _handle_buffer(buffer);
+                        const auto pop_result = _fifo.pop(buffer);
+                        if (pop_result.success) {
+                            _handle_buffer(buffer, pop_result.used, pop_result.size);
                         }
                     }
                 } catch (...) {
@@ -180,10 +184,6 @@ namespace sepia {
         virtual ~buffered_camera() {
             _running.store(false, std::memory_order_relaxed);
             _buffer_loop.join();
-        }
-
-        virtual void set_drop_threshold(std::size_t drop_threshold) override {
-            _fifo.set_drop_threshold(drop_threshold);
         }
 
         protected:

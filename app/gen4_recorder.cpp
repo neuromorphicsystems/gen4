@@ -379,6 +379,11 @@ int main(int argc, char* argv[]) {
                     write->operator()(event);
                 }
             };
+            auto drop_threshold = 0;
+            auto before_buffer = [&](std::size_t fifo_used, std::size_t fifo_size) {
+                dvs_display->lock();
+                return drop_threshold == 0 || fifo_used < drop_threshold;
+            };
             auto after_buffer = [&]() {
                 dvs_display->unlock();
                 while (accessing_shared.test_and_set(std::memory_order_acquire)) {
@@ -424,7 +429,7 @@ int main(int argc, char* argv[]) {
                         if (recording_stop_required) {
                             recording_stop_required = false;
                             write.reset();
-                            camera->set_drop_threshold(configuration.drop_threshold);
+                            drop_threshold = configuration.drop_threshold;
                             parameters.insert("recording_name", QVariant());
                             parameters.insert("recording_status", QVariant());
                             control_log(
@@ -446,7 +451,7 @@ int main(int argc, char* argv[]) {
                         initial_t = previous_t;
                         write = std::make_unique<sepia::write<sepia::type::dvs>>(
                             sepia::filename_to_ofstream(filename), sepia::evk4::width, sepia::evk4::height);
-                        camera->set_drop_threshold(0);
+                        drop_threshold = 0;
                         parameters.insert("recording_status", "0 s (0 B)");
                         parameters.insert("recording_name", QString::fromStdString(filename));
                     }
@@ -482,7 +487,7 @@ int main(int argc, char* argv[]) {
                 camera = sepia::evk4::make_camera(
                     std::move(handle_event),
                     std::move(handle_trigger_event),
-                    [&]() { dvs_display->lock(); },
+                    before_buffer,
                     after_buffer,
                     [&](std::exception_ptr exception) {
                         try {
@@ -493,12 +498,19 @@ int main(int argc, char* argv[]) {
                         app.quit();
                     },
                     configuration.evk4_parameters,
-                    device.serial);
+                    device.serial,
+                    std::chrono::milliseconds(100),
+                    64,
+                    configuration.fifo_size,
+                    []() {
+                        std::cerr << "Warning: packet dropped\n";
+                        std::cerr.flush();
+                    });
             } else {
                 camera = sepia::psee413::make_camera(
                     std::move(handle_event),
                     std::move(handle_trigger_event),
-                    [&]() { dvs_display->lock(); },
+                    before_buffer,
                     after_buffer,
                     [&](std::exception_ptr exception) {
                         try {
@@ -509,9 +521,16 @@ int main(int argc, char* argv[]) {
                         app.quit();
                     },
                     configuration.psee413_parameters,
-                    device.serial);
+                    device.serial,
+                    std::chrono::milliseconds(100),
+                    64,
+                    configuration.fifo_size,
+                    []() {
+                        std::cerr << "Warning: packet dropped\n";
+                        std::cerr.flush();
+                    });
             }
-            camera->set_drop_threshold(configuration.drop_threshold);
+            drop_threshold = configuration.drop_threshold;
             auto return_value = app.exec();
             if (return_value > 0) {
                 throw std::runtime_error("qt returned a non-zero code");

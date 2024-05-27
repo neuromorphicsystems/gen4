@@ -10,6 +10,7 @@ namespace gen4 {
     struct configuration {
         std::string recordings;
         std::optional<std::string> serial;
+        std::size_t fifo_size;
         std::size_t drop_threshold;
         sepia::evk4::parameters evk4_parameters;
         sepia::psee413::parameters psee413_parameters;
@@ -22,6 +23,7 @@ namespace gen4 {
             if (!data["serial"].is_null()) {
                 result.serial = data["serial"];
             }
+            result.fifo_size = data["fifo_size"];
             result.drop_threshold = data["drop_threshold"];
             result.evk4_parameters.biases.pr = data["evk4"]["biases"]["pr"];
             result.evk4_parameters.biases.fo = data["evk4"]["biases"]["fo"];

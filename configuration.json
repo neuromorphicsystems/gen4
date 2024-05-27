@@ -1,6 +1,7 @@
 {
     "recordings": "recordings",
     "serial": null,
+    "fifo_size": 4096,
     "drop_threshold": 256,
     "evk4": {
         "biases": {

@@ -446,12 +446,14 @@ namespace sepia {
                 const std::string& serial = {},
                 const std::chrono::steady_clock::duration& timeout = std::chrono::milliseconds(100),
                 std::size_t buffers_count = 64,
-                std::function<void(std::size_t)> handle_drop = [](std::size_t) {}) :
+                std::size_t fifo_size = 4096,
+                std::function<void()> handle_drop = []() {}) :
                 base_camera(camera_parameters),
                 sepia::buffered_camera<HandleBuffer, HandleException>(
                     std::forward<HandleBuffer>(handle_buffer),
                     std::forward<HandleException>(handle_exception),
                     timeout,
+                    fifo_size,
                     std::move(handle_drop)),
                 _active_transfers(buffers_count) {
                 _interface = usb::open(name, 1204, 244, get_serial, serial);
@@ -1477,102 +1479,175 @@ namespace sepia {
             virtual ~decode() {}
 
             /// operator() decodes a buffer of bytes.
-            virtual void operator()(const std::vector<uint8_t>& buffer) {
-                _before_buffer();
+            virtual void operator()(const std::vector<uint8_t>& buffer, std::size_t used, std::size_t size) {
+                const auto dispatch = _before_buffer(used, size);
                 const auto system_timestamp =
                     *reinterpret_cast<const uint64_t*>(buffer.data() + (buffer.size() - sizeof(uint64_t)));
-                for (std::size_t index = 0; index < ((buffer.size() - sizeof(uint64_t)) / 2) * 2; index += 2) {
-                    switch (buffer[index + 1] >> 4) {
-                        case 0b0000:
-                            _event.y = static_cast<uint16_t>(
-                                height - 1 - (buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8)));
-                            break;
-                        case 0b0010:
-                            _event.x = static_cast<uint16_t>(
-                                buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8));
-                            _event.on = ((buffer[index + 1] >> 3) & 1) == 1;
-                            if (_event.x < width && _event.y < height) {
-                                _handle_event(_event);
-                            }
-                            break;
-                        case 0b0011:
-                            _event.x = static_cast<uint16_t>(
-                                buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8));
-                            _event.on = ((buffer[index + 1] >> 3) & 1) == 1;
-                            break;
-                        case 0b0100:
-                            for (uint8_t bit = 0; bit < 8; ++bit) {
-                                if (((buffer[index] >> bit) & 1) == 1) {
-                                    if (_event.x < width && _event.y < height) {
-                                        _handle_event(_event);
+                if (dispatch) {
+                    for (std::size_t index = 0; index < ((buffer.size() - sizeof(uint64_t)) / 2) * 2; index += 2) {
+                        switch (buffer[index + 1] >> 4) {
+                            case 0b0000:
+                                _event.y = static_cast<uint16_t>(
+                                    buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8));
+                                if (_event.y < height) {
+                                    _event.y = static_cast<uint16_t>(height - 1 - _event.y);
+                                }
+                                break;
+                            case 0b0010:
+                                _event.x = static_cast<uint16_t>(
+                                    buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8));
+                                _event.on = ((buffer[index + 1] >> 3) & 1) == 1;
+                                if (_event.x < width && _event.y < height) {
+                                    _handle_event(_event);
+                                }
+                                break;
+                            case 0b0011:
+                                _event.x = static_cast<uint16_t>(
+                                    buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8));
+                                _event.on = ((buffer[index + 1] >> 3) & 1) == 1;
+                                break;
+                            case 0b0100:
+                                for (uint8_t bit = 0; bit < 8; ++bit) {
+                                    if (((buffer[index] >> bit) & 1) == 1) {
+                                        if (_event.x < width && _event.y < height) {
+                                            _handle_event(_event);
+                                        }
+                                    }
+                                    ++_event.x;
+                                }
+                                for (uint8_t bit = 0; bit < 4; ++bit) {
+                                    if (((buffer[index + 1] >> bit) & 1) == 1) {
+                                        if (_event.x < width && _event.y < height) {
+                                            _handle_event(_event);
+                                        }
+                                    }
+                                    ++_event.x;
+                                }
+                                break;
+                            case 0b0101:
+                                for (uint8_t bit = 0; bit < 8; ++bit) {
+                                    if (((buffer[index] >> bit) & 1) == 1) {
+                                        if (_event.x < width && _event.y < height) {
+                                            _handle_event(_event);
+                                        }
+                                    }
+                                    ++_event.x;
+                                }
+                                break;
+                            case 0b0110: {
+                                const auto lsb_t = static_cast<uint32_t>(
+                                    buffer[index] | (static_cast<uint32_t>(buffer[index + 1] & 0b1111) << 8));
+                                if (lsb_t != _previous_lsb_t) {
+                                    _previous_lsb_t = lsb_t;
+                                    const auto t = static_cast<uint64_t>(_previous_lsb_t | (_previous_msb_t << 12))
+                                                   + (static_cast<uint64_t>(_overflows) << 24);
+                                    if (t >= _event.t) {
+                                        _event.t = t;
                                     }
                                 }
-                                ++_event.x;
+                                break;
                             }
-                            for (uint8_t bit = 0; bit < 4; ++bit) {
-                                if (((buffer[index + 1] >> bit) & 1) == 1) {
-                                    if (_event.x < width && _event.y < height) {
-                                        _handle_event(_event);
+                            case 0b1000: {
+                                const auto msb_t = static_cast<uint32_t>(
+                                    buffer[index] | (static_cast<uint32_t>(buffer[index + 1] & 0b1111) << 8));
+                                if (msb_t != _previous_msb_t) {
+                                    if (msb_t > _previous_msb_t) {
+                                        if (msb_t - _previous_msb_t < static_cast<uint32_t>((1 << 12) - 2)) {
+                                            _previous_lsb_t = 0;
+                                            _previous_msb_t = msb_t;
+                                        }
+                                    } else {
+                                        if (_previous_msb_t - msb_t > static_cast<uint32_t>((1 << 12) - 2)) {
+                                            ++_overflows;
+                                            _previous_lsb_t = 0;
+                                            _previous_msb_t = msb_t;
+                                        }
+                                    }
+                                    const auto t = static_cast<uint64_t>(_previous_lsb_t | (_previous_msb_t << 12))
+                                                   + (static_cast<uint64_t>(_overflows) << 24);
+                                    if (t >= _event.t) {
+                                        _event.t = t;
                                     }
                                 }
-                                ++_event.x;
+                                break;
                             }
-                            break;
-                        case 0b0101:
-                            for (uint8_t bit = 0; bit < 8; ++bit) {
-                                if (((buffer[index] >> bit) & 1) == 1) {
-                                    if (_event.x < width && _event.y < height) {
-                                        _handle_event(_event);
-                                    }
-                                }
-                                ++_event.x;
-                            }
-                            break;
-                        case 0b0110: {
-                            const auto lsb_t = static_cast<uint32_t>(
-                                buffer[index] | (static_cast<uint32_t>(buffer[index + 1] & 0b1111) << 8));
-                            if (lsb_t != _previous_lsb_t) {
-                                _previous_lsb_t = lsb_t;
-                                const auto t = static_cast<uint64_t>(_previous_lsb_t | (_previous_msb_t << 12))
-                                               + (static_cast<uint64_t>(_overflows) << 24);
-                                if (t >= _event.t) {
-                                    _event.t = t;
-                                }
-                            }
-                            break;
+                            case 0b1010:
+                                _handle_trigger_event(
+                                    {_event.t,
+                                     system_timestamp,
+                                     static_cast<uint8_t>(buffer[index + 1] & 0b1111),
+                                     (buffer[index] & 1) == 1});
+                                break;
+                            default:
+                                break;
                         }
-                        case 0b1000: {
-                            const auto msb_t = static_cast<uint32_t>(
-                                buffer[index] | (static_cast<uint32_t>(buffer[index + 1] & 0b1111) << 8));
-                            if (msb_t != _previous_msb_t) {
-                                if (msb_t > _previous_msb_t) {
-                                    if (msb_t - _previous_msb_t < static_cast<uint32_t>((1 << 12) - 2)) {
-                                        _previous_lsb_t = 0;
-                                        _previous_msb_t = msb_t;
-                                    }
-                                } else {
-                                    if (_previous_msb_t - msb_t > static_cast<uint32_t>((1 << 12) - 2)) {
-                                        ++_overflows;
-                                        _previous_lsb_t = 0;
-                                        _previous_msb_t = msb_t;
+                    }
+                } else {
+                    for (std::size_t index = 0; index < ((buffer.size() - sizeof(uint64_t)) / 2) * 2; index += 2) {
+                        switch (buffer[index + 1] >> 4) {
+                            case 0b0000:
+                                _event.y = static_cast<uint16_t>(
+                                    buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8));
+                                if (_event.y < height) {
+                                    _event.y = static_cast<uint16_t>(height - 1 - _event.y);
+                                }
+                                break;
+                            case 0b0010:
+                                _event.x = static_cast<uint16_t>(
+                                    buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8));
+                                _event.on = ((buffer[index + 1] >> 3) & 1) == 1;
+                                break;
+                            case 0b0011:
+                                _event.x = static_cast<uint16_t>(
+                                    buffer[index] | (static_cast<uint16_t>(buffer[index + 1] & 0b111) << 8));
+                                _event.on = ((buffer[index + 1] >> 3) & 1) == 1;
+                                break;
+                            case 0b0100:
+                                _event.x += 12;
+                                break;
+                            case 0b0101:
+                                _event.x += 8;
+                                break;
+                            case 0b0110: {
+                                const auto lsb_t = static_cast<uint32_t>(
+                                    buffer[index] | (static_cast<uint32_t>(buffer[index + 1] & 0b1111) << 8));
+                                if (lsb_t != _previous_lsb_t) {
+                                    _previous_lsb_t = lsb_t;
+                                    const auto t = static_cast<uint64_t>(_previous_lsb_t | (_previous_msb_t << 12))
+                                                   + (static_cast<uint64_t>(_overflows) << 24);
+                                    if (t >= _event.t) {
+                                        _event.t = t;
                                     }
                                 }
-                                const auto t = static_cast<uint64_t>(_previous_lsb_t | (_previous_msb_t << 12))
-                                               + (static_cast<uint64_t>(_overflows) << 24);
-                                if (t >= _event.t) {
-                                    _event.t = t;
-                                }
+                                break;
                             }
+                            case 0b1000: {
+                                const auto msb_t = static_cast<uint32_t>(
+                                    buffer[index] | (static_cast<uint32_t>(buffer[index + 1] & 0b1111) << 8));
+                                if (msb_t != _previous_msb_t) {
+                                    if (msb_t > _previous_msb_t) {
+                                        if (msb_t - _previous_msb_t < static_cast<uint32_t>((1 << 12) - 2)) {
+                                            _previous_lsb_t = 0;
+                                            _previous_msb_t = msb_t;
+                                        }
+                                    } else {
+                                        if (_previous_msb_t - msb_t > static_cast<uint32_t>((1 << 12) - 2)) {
+                                            ++_overflows;
+                                            _previous_lsb_t = 0;
+                                            _previous_msb_t = msb_t;
+                                        }
+                                    }
+                                    const auto t = static_cast<uint64_t>(_previous_lsb_t | (_previous_msb_t << 12))
+                                                   + (static_cast<uint64_t>(_overflows) << 24);
+                                    if (t >= _event.t) {
+                                        _event.t = t;
+                                    }
+                                }
+                                break;
+                            }
+                            default:
+                                break;
                         }
-                        case 0b1010:
-                            _handle_trigger_event(
-                                {_event.t,
-                                 system_timestamp,
-                                 static_cast<uint8_t>(buffer[index + 1] & 0b1111),
-                                 (buffer[index] & 1) == 1});
-                            break;
-                        default:
-                            break;
                     }
                 }
                 _after_buffer();
@@ -1610,7 +1685,8 @@ namespace sepia {
                 const std::string& serial = {},
                 const std::chrono::steady_clock::duration& timeout = std::chrono::milliseconds(100),
                 std::size_t buffers_count = 64,
-                std::function<void(std::size_t)> handle_drop = [](std::size_t) {}) :
+                std::size_t fifo_size = 4096,
+                std::function<void()> handle_drop = []() {}) :
                 buffered_camera<decode<HandleEvent, HandleTriggerEvent, BeforeBuffer, AfterBuffer>, HandleException>(
                     decode<HandleEvent, HandleTriggerEvent, BeforeBuffer, AfterBuffer>(
                         std::forward<HandleEvent>(handle_event),
@@ -1622,6 +1698,7 @@ namespace sepia {
                     serial,
                     timeout,
                     buffers_count,
+                    fifo_size,
                     handle_drop) {}
             camera(const camera&) = delete;
             camera(camera&& other) = delete;
@@ -1648,7 +1725,8 @@ namespace sepia {
             const std::string& serial = {},
             const std::chrono::steady_clock::duration& timeout = std::chrono::milliseconds(100),
             std::size_t buffers_count = 64,
-            std::function<void(std::size_t)> handle_drop = [](std::size_t) {}) {
+            std::size_t fifo_size = 4096,
+            std::function<void()> handle_drop = []() {}) {
             return sepia::make_unique<
                 camera<HandleEvent, HandleTriggerEvent, BeforeBuffer, AfterBuffer, HandleException>>(
                 std::forward<HandleEvent>(handle_event),
@@ -1660,6 +1738,7 @@ namespace sepia {
                 serial,
                 timeout,
                 buffers_count,
+                fifo_size,
                 std::move(handle_drop));
         }
     }
