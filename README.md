@@ -37,7 +37,7 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="152a",ATTR{idProduct}=="84[0-1]?", MODE="0666
 SUBSYSTEM=="usb", ATTR{idVendor}=="04b4",ATTR{idProduct}=="00f[4-5]", MODE="0666"
 ```
 
-Ubuntu 20.04 ships an older version of Qt 5. Before running `make`, replace the following lines 2 to 5 in *app/gen4_recorder.qml.hpp* from:
+Ubuntu 20.04 ships an older version of Qt 5. Before running `make`, replace the following lines 2 to 5 in _app/gen4_recorder.qml.hpp_ from:
 
 ```qml
 import QtQuick 2.15
@@ -68,9 +68,11 @@ make
 
 ### Windows
 
-Windows users can download a pre-compiled version here: https://drive.google.com/file/d/1zWh9HD7vAskBuiQ_PMLLqWNGFmz6XApy/view?usp=share_link
+Windows users can download a pre-compiled version here: https://drive.google.com/file/d/1zXA6OQVTrDrCOI9DvJtLpN9YL7fcWsUG/view?usp=share_link
 
-After connection a camera, use https://zadig.akeo.ie to enable the libusb driver.
+After connecting a camera, use https://zadig.akeo.ie to enable the libusb driver.
+
+You may need to download and install https://aka.ms/vs/17/release/vc_redist.x64.exe.
 
 Follow the instructions below to build the software from source.
 
@@ -86,7 +88,7 @@ Follow the instructions below to build the software from source.
 6. Open gen4/app/build/gen4_recorder.vcxproj
 7. Retarget the solution and set the mode to release
 8. Build the solution
-9. Download https://drive.google.com/file/d/1zWh9HD7vAskBuiQ_PMLLqWNGFmz6XApy/view?usp=share_link and unzip it (the directory contains the required shared libraries, copied from C:\Qt\5.15.3)
+9. Download https://drive.google.com/file/d/1zXA6OQVTrDrCOI9DvJtLpN9YL7fcWsUG/view?usp=share_link and unzip it (the directory contains the required shared libraries, copied from C:\Qt\5.15.3)
 10. Copy gen4/app/build/bin/release/gen4_recorder.exe to gen4-windows
 
 ## Use
