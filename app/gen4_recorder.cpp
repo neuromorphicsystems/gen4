@@ -109,9 +109,12 @@ int main(int argc, char* argv[]) {
             gen4::configuration configuration;
             {
                 auto configuration_candidate = command.options.find("configuration");
-                configuration = gen4::configuration::from_path(
-                    configuration_candidate == command.options.end() ? "configuration.json" :
-                                                                       configuration_candidate->second);
+                if (configuration_candidate == command.options.end()) {
+                    const auto default_path = std::filesystem::current_path() / "configuration.json";
+                    configuration = gen4::configuration::from_path(default_path);
+                } else {
+                    configuration = gen4::configuration::from_path(configuration_candidate->second);
+                }
             }
             std::filesystem::create_directories(configuration.recordings);
 
