@@ -70,6 +70,8 @@ make
 
 Windows users can download a pre-compiled version here: https://drive.google.com/file/d/1zWh9HD7vAskBuiQ_PMLLqWNGFmz6XApy/view?usp=share_link
 
+After connection a camera, use https://zadig.akeo.ie to enable the libusb driver.
+
 Follow the instructions below to build the software from source.
 
 1. Install Visual Studio Community (https://visualstudio.microsoft.com/)
