@@ -1,6 +1,7 @@
 #pragma once
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #if defined(_WIN32)
 #include "libusb/libusb.h"
@@ -189,8 +190,9 @@ namespace sepia {
                     timeout);
             }
 
-            /// control_transfer wraps libusb_control_transfer.
-            virtual void control_transfer(
+            /// unchecked_control_transfer wraps libusb_control_transfer.
+            /// The number of read bytes is not checked.
+            virtual int32_t unchecked_control_transfer(
                 const std::string& message,
                 uint8_t bm_request_type,
                 uint8_t b_request,
@@ -208,6 +210,27 @@ namespace sepia {
                     static_cast<uint16_t>(buffer.size()),
                     timeout);
                 throw_on_error(message, bytes_transferred);
+                return bytes_transferred;
+            }
+
+            /// control_transfer wraps libusb_control_transfer.
+            virtual void control_transfer(
+                const std::string& message,
+                uint8_t bm_request_type,
+                uint8_t b_request,
+                uint16_t w_value,
+                uint16_t w_index,
+                std::vector<uint8_t>& buffer,
+                uint32_t timeout = 0) {
+                const auto bytes_transferred = unchecked_control_transfer(
+                    message,
+                    bm_request_type,
+                    b_request,
+                    w_value,
+                    w_index,
+                    buffer,
+                    timeout
+                );
                 if (bytes_transferred != static_cast<int32_t>(buffer.size())) {
                     throw std::runtime_error(
                         message + " failed: non-matching data and transfer sizes (expected "
@@ -314,11 +337,16 @@ namespace sepia {
             std::unique_ptr<libusb_device_handle, handle_deleter> _handle;
         };
 
-        /// any_of loops over connected devices with the specified VID/PID.
+        /// identity describes vendor and product IDs.
+        struct identity {
+            uint16_t vendor;
+            uint16_t product;
+        };
+
+        /// any_of loops over connected devices with the specified identities.
         template <typename HandleDevice>
         bool any_of(
-            uint16_t vendor_id,
-            uint16_t product_id,
+            std::initializer_list<identity> identities,
             std::shared_ptr<libusb_context> context,
             HandleDevice handle_device) {
             libusb_device** raw_devices;
@@ -328,9 +356,11 @@ namespace sepia {
             for (ssize_t index = 0; index < count; ++index) {
                 libusb_device_descriptor descriptor;
                 if (libusb_get_device_descriptor(devices.get()[index], &descriptor) == 0) {
-                    if (descriptor.idVendor == vendor_id && descriptor.idProduct == product_id) {
-                        if (handle_device(devices.get()[index])) {
-                            return true;
+                    for (const auto identity : identities) {
+                        if (descriptor.idVendor == identity.vendor && descriptor.idProduct == identity.product) {
+                            if (handle_device(devices.get()[index])) {
+                                return true;
+                            }
                         }
                     }
                 }
@@ -340,27 +370,27 @@ namespace sepia {
 
         /// device_properties represents a device's serial and speed.
         struct device_properties {
+            uint32_t type;
             std::string serial;
             device_speed speed;
         };
 
         /// available_devices returns a list of connected devices serials and USB speeds.
-        template <typename GetSerial>
+        template <typename GetTypeAndSerial>
         inline std::vector<device_properties> available_devices(
-            uint16_t vendor_id,
-            uint16_t product_id,
-            GetSerial get_serial,
+            std::initializer_list<identity> identities,
+            GetTypeAndSerial get_type_and_serial,
             std::shared_ptr<libusb_context> context = {}) {
             if (!context) {
                 context = make_context();
             }
             std::vector<device_properties> devices_properties;
-            any_of(vendor_id, product_id, context, [&](libusb_device* device) {
+            any_of(identities, context, [&](libusb_device* device) {
                 try {
                     interface usb_interface(context, device);
-                    devices_properties.push_back({get_serial(usb_interface), usb_interface.get_device_speed()});
-                } catch (const std::runtime_error&) {
-                }
+                    const auto [type, serial] = get_type_and_serial(usb_interface);
+                    devices_properties.push_back({type, serial, usb_interface.get_device_speed()});
+                } catch (const std::runtime_error& error) {}
                 return false;
             });
             return devices_properties;
@@ -369,14 +399,13 @@ namespace sepia {
         /// open creates an interface from a VID/PID.
         inline interface open(
             const std::string& device_name,
-            uint16_t vendor_id,
-            uint16_t product_id,
+            std::initializer_list<identity> identities,
             std::shared_ptr<libusb_context> context = {}) {
             if (!context) {
                 context = make_context();
             }
             interface usb_interface;
-            if (!any_of(vendor_id, product_id, context, [&](libusb_device* device) {
+            if (!any_of(identities, context, [&](libusb_device* device) {
                     try {
                         usb_interface = interface(context, device);
                         return true;
@@ -389,26 +418,33 @@ namespace sepia {
             return usb_interface;
         }
 
-        /// open creates an interface from a VID/PID and a serial.
-        template <typename GetSerial>
+        /// open creates an interface from an identity and a serial.
+        template <typename GetTypeAndSerial>
         inline interface open(
             const std::string& device_name,
-            uint16_t vendor_id,
-            uint16_t product_id,
-            GetSerial get_serial,
+            std::initializer_list<identity> identities,
+            GetTypeAndSerial get_type_and_serial,
             const std::string& serial = "",
+            uint64_t type = 0,
             std::shared_ptr<libusb_context> context = {}) {
-            if (serial.empty()) {
-                return open(device_name, vendor_id, product_id, context);
+            if (serial.empty() && type == 0) {
+                return open(device_name, identities, context);
             }
             if (!context) {
                 context = make_context();
             }
             interface usb_interface;
-            if (!any_of(vendor_id, product_id, context, [&](libusb_device* device) {
+            if (!any_of(identities, context, [&](libusb_device* device) {
                     try {
                         usb_interface = interface(context, device);
-                        return get_serial(usb_interface) == serial;
+                        const auto [device_type, device_serial] = get_type_and_serial(usb_interface);
+                        if (type == 0) {
+                            return device_serial == serial;
+                        }
+                        if (serial.empty()) {
+                            return device_type == type;
+                        }
+                        return device_serial == serial && device_type == type;
                     } catch (const std::runtime_error&) {
                     }
                     return false;

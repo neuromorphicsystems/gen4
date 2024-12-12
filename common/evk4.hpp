@@ -3,8 +3,8 @@
 #pragma warning(disable : 4250)
 
 #include "camera.hpp"
+#include "psee.hpp"
 #include "sepia.hpp"
-#include "usb.hpp"
 #include <functional>
 #include <iomanip>
 #include <sstream>
@@ -17,7 +17,7 @@
 namespace sepia {
     namespace evk4 {
         /// get_serial reads the serial of an interface.
-        std::string get_serial(sepia::usb::interface& interface) {
+        std::string get_type_and_serial(sepia::usb::interface& interface) {
             interface.bulk_transfer("serial request", 0x02, {0x72, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00});
             const auto buffer = interface.bulk_transfer("serial response", 0x82, std::vector<uint8_t>(16));
             std::stringstream serial;
@@ -26,11 +26,6 @@ namespace sepia {
                 serial << std::setw(2) << std::setfill('0') << static_cast<uint16_t>(buffer[index]);
             }
             return serial.str();
-        }
-
-        /// available_devices returns a list of connected devices serials and speeds.
-        inline std::vector<usb::device_properties> available_devices() {
-            return usb::available_devices(0x04b4, 0x00f5, get_serial);
         }
 
         /// name is the camera model.
@@ -682,18 +677,53 @@ namespace sepia {
                     fifo_size,
                     std::move(handle_drop)),
                 _active_transfers(buffers_count) {
-                _interface = usb::open(name, 0x04b4, 0x00f5, get_serial, serial);
+                _interface = usb::open(name, psee::identities, psee::get_type_and_serial, serial);
                 _interface.checked_control_transfer(
                     "control0", 0x80, 0x06, 0x0300, 0x0000, std::vector<uint8_t>({0x04, 0x03, 0x09, 0x04}), 1000);
-                _interface.checked_control_transfer(
-                    "control1",
-                    0x80,
-                    0x06,
-                    0x0301,
-                    0x0409,
-                    {0x14, 0x03, 'P', 0x00, 'r', 0x00, 'o', 0x00, 'p', 0x00,
-                     'h',  0x00, 'e', 0x00, 's', 0x00, 'e', 0x00, 'e', 0x00},
-                    1000);
+                // control 1
+                {
+                    auto buffer = std::vector<uint8_t>(24, 0);
+                    const auto size =
+                        _interface.unchecked_control_transfer("control1", 0x80, 0x06, 0x0301, 0x0409, buffer, 1000);
+                    auto valid = false;
+                    if (!valid) {
+                        const auto signature =
+                            std::vector<uint8_t>({0x14, 0x03, 'P', 0x00, 'r', 0x00, 'o', 0x00, 'p', 0x00,
+                                                  'h',  0x00, 'e', 0x00, 's', 0x00, 'e', 0x00, 'e', 0x00});
+                        if (size >= signature.size()) {
+                            valid = true;
+                            for (std::size_t index = 0; index < signature.size(); ++index) {
+                                valid = signature[index] == buffer[index];
+                                if (!valid) {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!valid) {
+                        const auto signature =
+                            std::vector<uint8_t>({0x18, 0x03, 'C', 0x00, 'e', 0x00, 'n', 0x00, 't', 0x00, 'u', 0x00,
+                                                  'r',  0x00, 'y', 0x00, 'A', 0x00, 'r', 0x00, 'k', 0x00, 's', 0x00});
+                        if (size >= signature.size()) {
+                            valid = true;
+                            for (std::size_t index = 0; index < signature.size(); ++index) {
+                                valid = signature[index] == buffer[index];
+                                if (!valid) {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!valid) {
+                        std::stringstream control1;
+                        control1 << "Unexpect control1 register contents (";
+                        for (uint32_t index = 0; index < size; ++index) {
+                            control1 << std::setw(2) << std::setfill('0') << static_cast<uint16_t>(buffer[index]);
+                        }
+                        control1 << ")";
+                        throw std::runtime_error(control1.str());
+                    }
+                }
                 _interface.checked_control_transfer(
                     "control0",
                     0x80,
@@ -702,14 +732,53 @@ namespace sepia {
                     0x0000,
                     std::vector<uint8_t>({0x04, 0x03, 0x09, 0x04}),
                     1000); // potentially redundant
-                _interface.checked_control_transfer(
-                    "control2",
-                    0x80,
-                    0x06,
-                    0x0302,
-                    0x0409,
-                    {0x0a, 0x03, 'E', 0x00, 'V', 0x00, 'K', 0x00, '4', 0x00},
-                    1000);
+
+                // control 2
+                {
+                    auto buffer = std::vector<uint8_t>(50, 0);
+                    const auto size =
+                        _interface.unchecked_control_transfer("control2", 0x80, 0x06, 0x0302, 0x0409, buffer, 1000);
+                    auto valid = false;
+                    if (!valid) {
+                        const auto signature =
+                            std::vector<uint8_t>({0x0a, 0x03, 'E', 0x00, 'V', 0x00, 'K', 0x00, '4', 0x00});
+                        if (size >= signature.size()) {
+                            valid = true;
+                            for (std::size_t index = 0; index < signature.size(); ++index) {
+                                valid = signature[index] == buffer[index];
+                                if (!valid) {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!valid) {
+                        const auto signature = std::vector<uint8_t>({
+                            0x32, 0x03, 'S',  0x00, 'i',  0x00, 'l',  0x00, 'k',  0x00, 'y',  0x00, 'E',
+                            0x00, 'v',  0x00, 'C',  0x00, 'a',  0x00, 'm',  0x00, ' ',  0x00, 'H',  0x00,
+                            'D',  0x00, ' ',  0x00, 'v',  0x00, '0',  0x00, '3',  0x00, '.',  0x00, '0',
+                            0x00, '9',  0x00, '.',  0x00, '0',  0x00, '0',  0x00, 'C',  0x00,
+                        });
+                        if (size >= signature.size()) {
+                            valid = true;
+                            for (std::size_t index = 0; index < signature.size(); ++index) {
+                                valid = signature[index] == buffer[index];
+                                if (!valid) {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!valid) {
+                        std::stringstream control1;
+                        control1 << "Unexpect control2 register contents (";
+                        for (uint32_t index = 0; index < size; ++index) {
+                            control1 << std::setw(2) << std::setfill('0') << static_cast<uint16_t>(buffer[index]);
+                        }
+                        control1 << ")";
+                        throw std::runtime_error(control1.str());
+                    }
+                }
                 bulk_request({0x79, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000); // read release version
                 bulk_request({0x7a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000); // read build date
                 bulk_request({0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00}, 1000); // ?
@@ -1492,7 +1561,7 @@ namespace sepia {
                                 if (lsb_t != _previous_lsb_t) {
                                     _previous_lsb_t = lsb_t;
                                     const auto t = static_cast<uint64_t>(_previous_lsb_t | (_previous_msb_t << 12))
-                                                + (static_cast<uint64_t>(_overflows) << 24);
+                                                   + (static_cast<uint64_t>(_overflows) << 24);
                                     if (t >= _event.t) {
                                         _event.t = t;
                                     }
@@ -1516,7 +1585,7 @@ namespace sepia {
                                         }
                                     }
                                     const auto t = static_cast<uint64_t>(_previous_lsb_t | (_previous_msb_t << 12))
-                                                + (static_cast<uint64_t>(_overflows) << 24);
+                                                   + (static_cast<uint64_t>(_overflows) << 24);
                                     if (t >= _event.t) {
                                         _event.t = t;
                                     }

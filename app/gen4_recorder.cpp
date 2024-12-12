@@ -122,57 +122,30 @@ int main(int argc, char* argv[]) {
 
             // serial
             sepia::usb::device_properties device{
+                0,
                 "",
                 sepia::usb::device_speed::unknown,
             };
-            auto is_evk4 = true;
+            if (configuration.serial.has_value()) {
+                device.serial = configuration.serial.value();
+            }
             {
-                if (configuration.serial.has_value()) {
-                    device.serial = configuration.serial.value();
-                    auto found = false;
-                    for (const auto& available_device : sepia::evk4::available_devices()) {
-                        if (available_device.serial == device.serial) {
-                            device.speed = available_device.speed;
+                auto found = false;
+                for (const auto& available_device : sepia::psee::available_devices()) {
+                    if (device.serial.empty() || available_device.serial == device.serial) {
+                        if (available_device.type == sepia::psee::EVK3_HD
+                            || available_device.type == sepia::psee::EVK4) {
+                            device = available_device;
                             found = true;
-                            is_evk4 = true;
                             break;
                         }
                     }
-                    if (!found) {
-                        for (const auto& available_device : sepia::psee413::available_devices()) {
-                            if (available_device.serial == device.serial) {
-                                device.speed = available_device.speed;
-                                found = true;
-                                is_evk4 = false;
-                                break;
-                            }
-                        }
-                    }
-                    if (!found) {
+                }
+                if (!found) {
+                    if (device.serial.empty()) {
                         throw sepia::usb::serial_not_available(sepia::evk4::name, device.serial);
                     }
-                } else {
-                    auto found = false;
-                    {
-                        const auto available_devices = sepia::evk4::available_devices();
-                        if (!available_devices.empty()) {
-                            device = available_devices.front();
-                            found = true;
-                            is_evk4 = true;
-                        }
-                    }
-                    if (!found) {
-                        const auto available_devices = sepia::psee413::available_devices();
-                        if (!available_devices.empty()) {
-                            device = available_devices.front();
-                            found = true;
-                            is_evk4 = false;
-                        }
-                    }
-                    if (!found) {
-                        throw sepia::no_device_connected(
-                            std::string(sepia::evk4::name) + " or " + sepia::psee413::name);
-                    }
+                    throw sepia::no_device_connected(std::string(sepia::evk4::name) + " or " + sepia::psee413::name);
                 }
             }
             parameters.insert("serial", QString::fromStdString(device.serial));
@@ -193,8 +166,8 @@ int main(int argc, char* argv[]) {
             parameters.insert("recording_status", QVariant());
 
             // camera parameters
-            const auto biases_names =
-                is_evk4 ? sepia::evk4::bias_currents::names() : sepia::psee413::bias_currents::names();
+            const auto biases_names = device.type == sepia::psee::EVK4 ? sepia::evk4::bias_currents::names() :
+                                                                         sepia::psee413::bias_currents::names();
             std::unordered_set<std::string> biases_names_set(biases_names.begin(), biases_names.end());
             {
                 const auto initialisation_timestamp = utc_timestamp();
@@ -206,8 +179,9 @@ int main(int argc, char* argv[]) {
                     [](const std::string& name) { return QString::fromStdString(name); });
                 parameters.insert("biases_names", QVariant(qt_biases_names));
                 for (const auto& name : biases_names) {
-                    const auto value = is_evk4 ? configuration.evk4_parameters.biases.by_name(name) :
-                                                 configuration.psee413_parameters.biases.by_name(name);
+                    const auto value = device.type == sepia::psee::EVK4 ?
+                                           configuration.evk4_parameters.biases.by_name(name) :
+                                           configuration.psee413_parameters.biases.by_name(name);
                     parameters.insert(QString::fromStdString(name), value);
                     control_log(
                         control_events, initialisation_timestamp, name, std::to_string(static_cast<int32_t>(value)));
@@ -250,7 +224,7 @@ int main(int argc, char* argv[]) {
                             std::cerr << (std::string("unknown parameter \"") + name_string + "\"\n");
                             std::cerr.flush();
                         } else {
-                            if (is_evk4) {
+                            if (device.type == sepia::psee::EVK4) {
                                 configuration.evk4_parameters.biases.by_name(name_string) =
                                     static_cast<uint8_t>(value.toUInt());
                             } else {
@@ -393,7 +367,7 @@ int main(int argc, char* argv[]) {
                 }
                 if (bias_update_required) {
                     bias_update_required = false;
-                    if (is_evk4) {
+                    if (device.type == sepia::psee::EVK4) {
                         dynamic_cast<sepia::evk4::base_camera*>(camera.get())
                             ->update_parameters(configuration.evk4_parameters);
                     } else {
@@ -486,7 +460,7 @@ int main(int argc, char* argv[]) {
                 control_events << message.rdbuf();
                 control_events.flush();
             };
-            if (is_evk4) {
+            if (device.type == sepia::psee::EVK4) {
                 camera = sepia::evk4::make_camera(
                     std::move(handle_event),
                     std::move(handle_trigger_event),

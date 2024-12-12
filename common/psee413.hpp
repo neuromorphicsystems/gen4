@@ -41,11 +41,6 @@ namespace sepia {
             return serial.str();
         }
 
-        /// available_devices returns a list of connected devices serials and speeds.
-        inline std::vector<usb::device_properties> available_devices() {
-            return usb::available_devices(0x04b4, 0x00f4, get_serial);
-        }
-
         /// name is the camera model.
         constexpr char name[] = "PSEE-413";
 
@@ -456,7 +451,7 @@ namespace sepia {
                     fifo_size,
                     std::move(handle_drop)),
                 _active_transfers(buffers_count) {
-                _interface = usb::open(name, 1204, 244, get_serial, serial);
+                _interface = usb::open(name, psee::identities, psee::get_type_and_serial, serial);
                 std::this_thread::sleep_for(std::chrono::milliseconds(150));
                 bulk_request({0x71, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 100);
                 // bulk_request({0x55, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00}, 100);

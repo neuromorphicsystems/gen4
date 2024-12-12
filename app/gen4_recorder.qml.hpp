@@ -25,6 +25,8 @@ R"(
         }
         property var showMenu: false
         property var requestIndex: 0
+        property var showCrosshairs: false
+        property var crosshairsPaintArea: Qt.rect(0, 0, header_width, header_height)
         RowLayout{
             spacing: 0
             width: window.width
@@ -42,6 +44,34 @@ R"(
                     height: eventsView.height
                     color: '#191919'
                 }
+                Rectangle {
+                    visible: showCrosshairs
+                    x: Math.round(crosshairsPaintArea.x + crosshairsPaintArea.width / 2) - 1
+                    y: Math.round(crosshairsPaintArea.y)
+                    width: 2
+                    height: crosshairsPaintArea.height
+                    color: "#aaffffff"
+                }
+                Rectangle {
+                    visible: showCrosshairs
+                    x: Math.round(crosshairsPaintArea.x)
+                    y: Math.round(crosshairsPaintArea.y + crosshairsPaintArea.height / 2) - 1
+                    width: crosshairsPaintArea.width
+                    height: 2
+                    color: "#aaffffff"
+                }
+                Rectangle {
+                    visible: showCrosshairs
+                    antialiasing: true
+                    width: Math.round(0.0234375 * crosshairsPaintArea.width)
+                    height: width
+                    x: Math.round(crosshairsPaintArea.x + crosshairsPaintArea.width / 2 - width * 0.5)
+                    y: Math.round(crosshairsPaintArea.y + crosshairsPaintArea.height / 2 - width * 0.5)
+                    color: "#00000000"
+                    border.color: "#aaffffff"
+                    border.width: 2
+                    radius: Math.round(width * 0.5)
+                }
                 DvsDisplay {
                     objectName: "dvs_display"
                     id: dvs_display
@@ -52,6 +82,16 @@ R"(
                     style: DvsDisplay.Linear
                     on_colormap: ['#F4C20D', '#191919']
                     off_colormap: ['#1E88E5', '#191919']
+                    onPaintAreaChanged: {
+                        if (!parameters.use_count_display) {
+                            crosshairsPaintArea = Qt.rect(
+                                paint_area.x / Screen.devicePixelRatio,
+                                paint_area.y / Screen.devicePixelRatio,
+                                paint_area.width / Screen.devicePixelRatio,
+                                paint_area.height / Screen.devicePixelRatio,
+                            );
+                        }
+                    }
                 }
                 CountDisplay {
                     objectName: "count_display"
@@ -61,6 +101,16 @@ R"(
                     canvas_size: Qt.size(header_width, header_height)
                     colormap: CountDisplay.Hot
                     discard_ratio: 0.001
+                    onPaintAreaChanged: {
+                        if (parameters.use_count_display) {
+                            crosshairsPaintArea = Qt.rect(
+                                paint_area.x / Screen.devicePixelRatio,
+                                paint_area.y / Screen.devicePixelRatio,
+                                paint_area.width / Screen.devicePixelRatio,
+                                paint_area.height / Screen.devicePixelRatio,
+                            );
+                        }
+                    }
                 }
             }
 )" R"(
@@ -196,7 +246,7 @@ R"(
                             font: title_font;
                         }
                         Repeater {
-                            model: ["Flip bottom-top", "Flip left-right"]
+                            model: ["Flip bottom-top", "Flip left-right", "Crosshairs"]
                             RowLayout {
                                 Layout.topMargin: 5
                                 Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
@@ -208,7 +258,11 @@ R"(
                                     palette.light: "#1E88E5"
                                     palette.mid: "#1E88E5"
                                     onToggled: {
-                                        parameters[modelData] = position > 0.5;
+                                        if (modelData == "Crosshairs") {
+                                            showCrosshairs = position > 0.5;
+                                        } else {
+                                            parameters[modelData] = position > 0.5;
+                                        }
                                     }
                                 }
                                 Text {
